@@ -1,0 +1,34 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go caches
+.cache/
+.gocache/
+.gomodcache/
+.gotmp/
+.tmp/
+coverage.out
+
+# Build outputs
+bin/
+*.exe
+*.test
+
+# Runtime data
+logs/
+.smoke/
+certs/
+cert-test/
+cert-test-ps1/
+*.db
+*.db-wal
+*.db-shm
+*.log

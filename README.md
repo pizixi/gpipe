@@ -1,0 +1,275 @@
+# gpipe
+
+`gpipe` 是对当前 Rust `npipe` 项目的 Go 重构版本，目标是在业务逻辑上尽量与原项目保持一致，并提供可独立构建、运行和部署的 Go 实现。
+
+当前版本已经包含控制面、Web 管理端、隧道同步、代理转发、`TCP / WS / QUIC / KCP` 传输、`TCP / UDP / SOCKS5 / HTTP` 代理类型，以及基于纯 Go SQLite 驱动的服务端存储实现。
+
+## 项目结构
+
+- `cmd/server`：服务端入口
+- `cmd/client`：客户端入口
+- `internal/client`：客户端主循环、登录、心跳、隧道同步
+- `internal/server`：服务端主逻辑、连接管理、协议处理
+- `internal/proxy`：代理入口、出口、数据转发、加密与压缩
+- `internal/codec`：外层帧编解码
+- `internal/proto`：与 Rust 版本兼容的消息编解码
+- `internal/db`：SQLite 初始化与迁移
+- `internal/web`：管理后台 HTTP API
+- `dist/index.html`：默认管理端页面，构建时会打进服务端二进制
+- `scripts/smoke.ps1`：本地最小链路验证脚本
+
+## 已实现特性
+
+- 纯 Go SQLite 驱动，使用 `modernc.org/sqlite`
+- 服务端 Web 管理接口
+- 用户与隧道的增删改查
+- 客户端登录、重连、心跳保活
+- 隧道变更通知与动态同步
+- 本地和远端的 `TCP / UDP / SOCKS5 / HTTP` 代理
+- 传输协议支持：
+  - `tcp://`
+  - `ws://`
+  - `quic://`
+  - `kcp://`
+- `illegal_traffic_forward` 非协议流量转发
+- 默认管理端页面已内置到服务端二进制中
+- `web_base_dir` 可选磁盘目录覆盖，便于前端联调
+- Windows / Linux 服务安装与卸载
+
+## 构建
+
+建议在项目目录内使用独立缓存目录，避免污染全局 Go 缓存。
+
+```powershell
+go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-server.exe .\cmd\server
+go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
+```
+
+如果要启用传输层 TLS，请在 `gpipe` 目录生成证书：
+
+```powershell
+.\generate-certificate.ps1 -Force
+```
+
+生成结果默认输出到 `.\certs\`：
+
+- `.\certs\cert.pem`
+- `.\certs\server.key.pem`
+- `.\certs\root-ca.pem`
+- `.\certs\root-ca.key.pem`
+
+发布包最小建议内容：
+
+- `bin/gpipe-server(.exe)`
+- `bin/gpipe-client(.exe)`
+- `gpipe.json`
+- `certs/` 目录（仅在 `enable_tls=true` 时需要）
+
+说明：
+
+- `dist/index.html` 已内置进服务端二进制，发布时不需要再额外携带这个文件
+- 如果设置了 `web_base_dir` 且目录存在，服务端会优先使用磁盘目录中的静态文件，便于本地修改前端后直接查看效果
+
+Linux 交叉构建客户端示例：
+
+```powershell
+$env:GOOS="linux"
+$env:GOARCH="amd64"
+go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cmd\client
+```
+
+## 服务端运行
+
+```powershell
+.\bin\gpipe-server.exe -config-file .\gpipe.json
+```
+
+默认配置文件名已经调整为 `gpipe.json`。为了兼容旧部署，如果你没有显式传 `-config-file`，且当前目录只有旧文件名 `config.json`，服务端仍会自动回退读取它。
+
+服务端配置示例：
+
+```json
+{
+  "database_url": "sqlite://gpipe.db?mode=rwc",
+  "listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119,quic://0.0.0.0:8119",
+  "illegal_traffic_forward": "",
+  "enable_tls": false,
+  "tls_cert": "./certs/cert.pem",
+  "tls_key": "./certs/server.key.pem",
+  "web_base_dir": "",
+  "web_addr": "0.0.0.0:8120",
+  "web_username": "admin",
+  "web_password": "admin@1234",
+  "quiet": false,
+  "log_dir": "logs"
+}
+```
+
+配置项说明：
+
+| 配置项                    | 说明                                                              |
+| ------------------------- | ----------------------------------------------------------------- |
+| `database_url`            | 数据库地址，目前只支持 SQLite，示例：`sqlite://gpipe.db?mode=rwc` |
+| `listen_addr`             | 服务监听地址，多个地址用英文逗号分隔                              |
+| `illegal_traffic_forward` | 非 `npipe` 协议流量转发目标，例如 `127.0.0.1:80`                  |
+| `enable_tls`              | 是否为客户端 `<->` 服务端传输链路启用 TLS                         |
+| `tls_cert`                | TLS 证书路径                                                      |
+| `tls_key`                 | TLS 私钥路径                                                      |
+| `web_base_dir`            | 可选磁盘静态资源目录；为空或目录不存在时回退到二进制内置的页面    |
+| `web_addr`                | Web 管理端监听地址                                                |
+| `web_username`            | Web 管理账号，留空则关闭 Web 管理                                 |
+| `web_password`            | Web 管理密码，留空则关闭 Web 管理                                 |
+| `quiet`                   | 是否静默运行                                                      |
+| `log_dir`                 | 日志目录                                                          |
+
+## 客户端运行
+
+前台运行：
+
+```powershell
+.\bin\gpipe-client.exe run --server tcp://127.0.0.1:8118 --key demo
+```
+
+启用 TLS 的示例：
+
+```powershell
+.\bin\gpipe-client.exe run --server quic://127.0.0.1:8119 --key demo --enable-tls
+```
+
+常用参数：
+
+- `--server`：服务端地址，支持多个地址，使用英文逗号分隔
+- `--key`：玩家密钥
+- `--enable-tls`：为客户端 `<->` 服务端传输链路启用 TLS
+- `--tls-server-name`：TLS SNI
+- `--ss-server`：可选，Shadowsocks 服务端地址
+- `--ss-method`：可选，Shadowsocks 加密方式
+- `--ss-password`：可选，Shadowsocks 密码
+- `--quiet`：静默模式
+- `--log-dir`：日志目录
+- `--backtrace`：启用更完整的运行时回溯
+
+兼容性说明：
+
+- `--ca-cert` 和 `--insecure` 仍保留解析，主要用于兼容旧命令行/旧服务参数
+- 当前客户端在 TLS 模式下默认跳过证书校验，TLS 只用于链路加密，因此通常不需要再传 `--ca-cert`
+- 当同时传入 `--ss-server`、`--ss-method`、`--ss-password` 时，客户端会通过 Shadowsocks 出站连接服务端
+- 目前自定义拨号只支持 `tcp://` 和 `ws://` 服务端地址；`quic://`、`kcp://` 仍然使用原生 UDP 拨号
+
+通过 Shadowsocks 连接服务端示例：
+
+```powershell
+.\bin\gpipe-client.exe run --server ws://127.0.0.1:8119 --key demo --ss-server 127.0.0.1:8388 --ss-method chacha20-ietf-poly1305 --ss-password your-password
+```
+
+## TLS 作用范围
+
+`enable_tls` 只控制客户端和服务端之间的传输连接，不会自动把整条业务链路的每一段都变成 TLS。
+
+以一条普通隧道为例，数据通常会经过三段：
+
+1. 本地应用 `<->` 本地 `gpipe`
+2. `gpipe client` `<->` `gpipe server`
+3. 远端 `gpipe` `<->` 最终目标服务 `endpoint`
+
+说明如下：
+
+- 开启服务端配置 `enable_tls=true`，并在客户端使用 `--enable-tls` 后，第 `2` 段会使用 TLS
+- 这包括隧道内承载的 `TCP / UDP / SOCKS5 / HTTP` 业务数据；这些数据在客户端和服务端之间传输时会被 TLS 保护
+- 当前客户端 TLS 默认只做链路加密，不校验证书链和主机名，因此不需要再额外传 `--ca-cert`
+- `--tls-server-name` 仍可用于发送指定的 TLS SNI
+- 第 `1` 段和第 `3` 段不会因为 `enable_tls` 自动加密，它们是否加密取决于业务程序本身
+- Web 管理端 `web_addr` 不受 `enable_tls` 控制，当前仍是独立的 HTTP 管理接口
+- `quic://` 本身要求 TLS；`tcp://`、`ws://`、`kcp://` 在启用 `enable_tls` 后同样会对客户端和服务端之间的链路加密
+
+例如：
+
+- 本地 `iperf3` 连到本地 `gpipe`，这段不是 `enable_tls` 负责的
+- 本地 `gpipe client` 到远端 `gpipe server`，这段会被 TLS 加密
+- 远端 `gpipe` 再去连接 `127.0.0.1:5201`，这段仍然是普通 TCP/UDP，除非目标服务自己就是 TLS 服务
+
+## 本地证书
+
+仓库内置的 PowerShell 脚本会默认生成适合本机调试的证书：
+
+- DNS SAN：`localhost`
+- IP SAN：`127.0.0.1`、`::1`
+
+生成命令：
+
+```powershell
+.\generate-certificate.ps1 -Force
+```
+
+生成后文件位于 `.\certs\` 目录：
+
+- `.\certs\cert.pem`
+- `.\certs\server.key.pem`
+- `.\certs\root-ca.pem`
+- `.\certs\root-ca.key.pem`
+
+生成后：
+
+- 服务端使用 `.\certs\cert.pem` 和 `.\certs\server.key.pem`
+- 客户端启用 TLS 时不需要再传 `--ca-cert`
+- 如果你希望在本地开发时覆盖内置页面，可以把前端文件放在 `web_base_dir` 指向的目录中
+
+本地测试示例：
+
+```powershell
+.\bin\gpipe-server.exe -config-file .\gpipe.json
+.\bin\gpipe-client.exe run --server tcp://127.0.0.1:8118 --key demo --enable-tls
+```
+
+## 安装系统服务
+
+客户端支持安装为系统服务，当前通过 `github.com/kardianos/service` 实现，支持 Windows 和 Linux。
+
+Windows / Linux 安装：
+
+```powershell
+.\bin\gpipe-client.exe install --server tcp://127.0.0.1:8118 --key demo
+```
+
+卸载服务：
+
+```powershell
+.\bin\gpipe-client.exe uninstall
+```
+
+说明：
+
+- `run-service` 子命令保留给服务管理器调用，通常不需要手工执行
+- 新安装的服务不再附带 `--ca-cert` 参数
+- Windows 下安装和启动服务通常需要管理员权限
+- Linux 下通常需要 `systemd` 环境和足够权限
+
+## 本地验证
+
+仓库内置了最小链路验证脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1
+```
+
+该脚本会完成以下动作：
+
+- 生成临时 `gpipe.json`
+- 启动 Go 服务端
+- 校验在 `web_base_dir=""` 时首页会返回内置 `index.html`
+- 通过 Web API 创建测试用户
+- 启动 Go 客户端并验证登录成功
+
+## 兼容性说明
+
+当前 Go 版实现以对齐 Rust 版业务逻辑为目标，已完成主要控制面和代理面功能，但“100% 等价”仍然应以实际联调结果为准，尤其包括：
+
+- Go 与 Rust 的交叉互通验证
+- 不同系统下的服务安装与启停行为
+- 各代理类型在复杂场景下的长时间稳定性验证
+
+## 备注
+
+- 服务端数据库驱动为纯 Go 实现，不依赖 CGO
+- 协议外层帧格式与消息映射按 Rust 版本对齐实现
+- 管理端 API 路径保持与 Rust 服务端一致

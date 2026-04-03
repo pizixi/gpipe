@@ -1,0 +1,4043 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>管理系统</title>
+        <style>
+            /* ================= 极简/紧凑风格 核心变量 ================= */
+            :root {
+                --bg-body: #fafafa;
+                --bg-panel: #ffffff;
+                --bg-hover: #f3f4f6;
+                --bg-tab: #f1f2f5;
+
+                --text-main: #111827;
+                --text-secondary: #4b5563;
+                --text-tertiary: #9ca3af;
+
+                --border-light: #e5e7eb;
+                --border-focus: #2563eb;
+
+                --primary: #2563eb;
+                --primary-hover: #1d4ed8;
+                --danger: #ef4444;
+                --danger-bg: #fef2f2;
+                --success: #10b981;
+                --warning: #f59e0b;
+
+                --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+                --shadow-md:
+                    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+                --shadow-modal:
+                    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+                    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+                --radius-sm: 4px;
+                --radius-md: 6px;
+                --radius-lg: 10px;
+                --list-font-size: 13px;
+                --list-action-icon-size: 18px;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    "Helvetica Neue", Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: var(--bg-body);
+                /* 精致的极弱点阵背景 */
+                background-image: radial-gradient(
+                    var(--border-light) 1px,
+                    transparent 1px
+                );
+                background-size: 20px 20px;
+                color: var(--text-main);
+                line-height: 1.5;
+                font-size: 13px; /* 整体字号变小，更精致 */
+            }
+
+            /* ================= 容器 ================= */
+            .container {
+                max-width: 1220px; /* 给数据表更多可用宽度 */
+                margin: 30px auto;
+                padding: 24px;
+                background-color: var(--bg-panel);
+                border: 1px solid var(--border-light);
+                border-radius: var(--radius-lg);
+                box-shadow: var(--shadow-md);
+                position: relative;
+            }
+
+            /* ================= 排版 ================= */
+            h1,
+            h2 {
+                margin: 0 0 20px 0;
+                font-weight: 600;
+                color: var(--text-main);
+                font-size: 18px; /* 标题克制 */
+                letter-spacing: -0.01em;
+                text-align: left;
+            }
+            #loginForm h2 {
+                text-align: center;
+            }
+
+            /* ================= 语言切换 ================= */
+            .language-switcher {
+                position: absolute;
+                top: 24px;
+                right: 24px;
+                display: flex;
+                gap: 2px;
+                background: var(--bg-tab);
+                padding: 2px;
+                border-radius: var(--radius-sm);
+                z-index: 10;
+            }
+
+            .language-btn {
+                background: transparent;
+                border: none;
+                color: var(--text-secondary);
+                padding: 4px 10px;
+                border-radius: 3px;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 500;
+                transition: all 0.15s ease;
+            }
+
+            .language-btn:hover {
+                color: var(--text-main);
+            }
+            .language-btn.active {
+                background: var(--bg-panel);
+                color: var(--text-main);
+                box-shadow: var(--shadow-sm);
+            }
+
+            /* ================= Tab 胶囊切换 (极简精致版) ================= */
+            .tab {
+                display: inline-flex;
+                background-color: var(--bg-tab);
+                padding: 3px;
+                border-radius: var(--radius-md);
+                margin-bottom: 20px;
+                border: 1px solid rgba(0, 0, 0, 0.02);
+            }
+
+            .tab button {
+                background-color: transparent;
+                border: none;
+                outline: none;
+                cursor: pointer;
+                padding: 6px 16px;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--text-secondary);
+                border-radius: var(--radius-sm);
+                transition: all 0.2s;
+            }
+
+            .tab button:hover {
+                color: var(--text-main);
+            }
+            .tab button.active {
+                background-color: var(--bg-panel);
+                color: var(--text-main);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            }
+
+            .tabcontent {
+                display: none;
+                animation: fadeIn 0.2s ease-in-out;
+            }
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                }
+                to {
+                    opacity: 1;
+                }
+            }
+
+            /* ================= 操作栏与搜索 ================= */
+            .action-bar {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 16px;
+                gap: 12px;
+            }
+
+            .search-bar {
+                display: flex;
+                align-items: center;
+                flex: 1;
+                max-width: 320px;
+                border: 1px solid var(--border-light);
+                border-radius: var(--radius-sm);
+                overflow: hidden;
+                transition: border-color 0.2s;
+                height: 30px;
+            }
+            .search-bar:focus-within {
+                border-color: var(--border-focus);
+                box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+            }
+
+            .search-bar input {
+                flex: 1;
+                padding: 0 10px;
+                border: none;
+                font-size: 13px;
+                background: transparent;
+                outline: none;
+                height: 100%;
+            }
+
+            .search-bar button {
+                padding: 0 12px;
+                background: var(--bg-hover);
+                color: var(--text-secondary);
+                border: none;
+                border-left: 1px solid var(--border-light);
+                height: 100%;
+                border-radius: 0;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            .search-bar button:hover {
+                background: #e5e7eb;
+                color: var(--text-main);
+            }
+
+            /* ================= 极简按钮 (小巧紧凑) ================= */
+            .btn,
+            .add-button {
+                padding: 0 14px;
+                height: 30px;
+                border: 1px solid transparent;
+                border-radius: var(--radius-sm);
+                cursor: pointer;
+                font-weight: 500;
+                font-size: 13px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.15s ease;
+                white-space: nowrap;
+            }
+
+            .btn-primary,
+            .add-button {
+                background-color: var(--text-main); /* 高级黑白调 */
+                color: #fff;
+            }
+            .btn-primary:hover,
+            .add-button:hover {
+                background-color: #374151;
+            }
+
+            .btn-secondary {
+                background-color: var(--bg-panel);
+                color: var(--text-main);
+                border-color: var(--border-light);
+            }
+            .btn-secondary:hover {
+                background-color: var(--bg-hover);
+                border-color: #d1d5db;
+            }
+
+            /* 表格内的超小操作按钮 */
+            .action-button {
+                padding: 2px 8px;
+                height: 24px;
+                font-size: 12px;
+                border-radius: 4px;
+                font-weight: 500;
+                border: 1px solid transparent;
+            }
+
+            .action-button.btn-primary {
+                background: var(--bg-panel);
+                color: var(--primary);
+                border-color: var(--border-light);
+            }
+            .action-button.btn-primary:hover {
+                border-color: var(--primary);
+                background: #eff6ff;
+            }
+
+            .action-button.btn-danger {
+                background: var(--bg-panel);
+                color: var(--danger);
+                border-color: var(--border-light);
+            }
+            .action-button.btn-danger:hover {
+                border-color: var(--danger);
+                background: var(--danger-bg);
+            }
+
+            .action-button.btn-success {
+                background: var(--bg-panel);
+                color: var(--success);
+                border-color: var(--border-light);
+            }
+            .action-button.btn-warning {
+                background: var(--bg-panel);
+                color: var(--warning);
+                border-color: var(--border-light);
+            }
+
+            .action-buttons {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+
+            /* ================= 紧凑型数据网格 (表格) ================= */
+            table {
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+                border: 1px solid var(--border-light);
+                border-radius: var(--radius-md);
+                overflow: hidden;
+                margin-top: 0;
+            }
+
+            th,
+            td {
+                text-align: left;
+                padding: 10px 14px; /* 极简的单元格内边距 */
+                border-bottom: 1px solid var(--border-light);
+                font-size: 13px;
+            }
+
+            th {
+                background-color: #f9fafb;
+                font-weight: 500;
+                color: var(--text-secondary);
+                font-size: 12px;
+            }
+
+            tr:last-child td {
+                border-bottom: none;
+            }
+            tr:hover td {
+                background-color: #f8fafc;
+            }
+
+            /* ================= 极简圆点状态标签 ================= */
+            .status-badge {
+                display: inline-flex;
+                align-items: center;
+                font-size: 12px;
+                font-weight: 500;
+                color: var(--text-main);
+            }
+            .status-badge::before {
+                content: "";
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                margin-right: 6px;
+            }
+            .status-badge-online::before,
+            .status-badge-enabled::before {
+                background-color: var(--success);
+                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+            }
+            .status-badge-offline::before,
+            .status-badge-disabled::before {
+                background-color: var(--text-tertiary);
+            }
+
+            /* ================= 表单与输入框 ================= */
+            .form-group {
+                margin-bottom: 14px;
+                display: flex;
+                align-items: center;
+            }
+
+            .form-group label {
+                flex: 0 0 100px;
+                margin-right: 12px;
+                font-weight: 500;
+                color: var(--text-secondary);
+                font-size: 13px;
+            }
+
+            .form-group input,
+            .form-group select {
+                flex: 1;
+                height: 32px;
+                padding: 0 10px;
+                border: 1px solid var(--border-light);
+                border-radius: var(--radius-sm);
+                background-color: var(--bg-panel);
+                color: var(--text-main);
+                font-size: 13px;
+                transition: all 0.2s;
+                box-shadow: var(--shadow-sm);
+            }
+
+            .input-with-action {
+                flex: 1;
+                min-width: 0;
+                position: relative;
+                display: flex;
+                align-items: center;
+            }
+
+            .input-with-action input {
+                min-width: 0;
+                width: 100%;
+                padding-right: 40px;
+            }
+
+            .input-icon-button {
+                position: absolute;
+                right: 6px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 26px;
+                height: 26px;
+                padding: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border: none;
+                border-radius: 999px;
+                background: transparent;
+                color: #64748b;
+                cursor: pointer;
+                transition:
+                    color 0.2s ease,
+                    background 0.2s ease;
+            }
+
+            .input-icon-button:hover {
+                color: var(--primary);
+                background: rgba(37, 99, 235, 0.08);
+            }
+
+            .input-icon-button:disabled {
+                color: var(--text-tertiary);
+                background: transparent;
+                cursor: not-allowed;
+            }
+
+            .input-icon-button:focus-visible {
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+            }
+
+            .input-icon-button svg {
+                width: 16px;
+                height: 16px;
+                display: block;
+                pointer-events: none;
+            }
+
+            .form-group input:focus,
+            .form-group select:focus {
+                border-color: var(--border-focus);
+                outline: none;
+                box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+            }
+
+            .form-group input[readonly] {
+                background-color: var(--bg-hover);
+                color: var(--text-tertiary);
+                cursor: not-allowed;
+            }
+
+            .checkbox-group input[type="checkbox"] {
+                width: 14px;
+                height: 14px;
+                accent-color: var(--text-main);
+                margin-right: 6px;
+                flex: none;
+                box-shadow: none;
+            }
+
+            /* ================= 登录表单 ================= */
+            .login-form {
+                background-color: var(--bg-panel);
+                padding: 32px;
+                border-radius: var(--radius-lg);
+                box-shadow: var(--shadow-modal);
+                border: 1px solid var(--border-light);
+                max-width: 340px;
+                margin: 15vh auto;
+            }
+            .login-form .btn-primary {
+                width: 100%;
+                margin-top: 10px;
+                height: 36px;
+            }
+            .login-form .language-switcher {
+                top: 12px;
+                right: 12px;
+                background: transparent;
+            }
+
+            /* ================= 模态框 ================= */
+            .modal {
+                display: none;
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.4);
+                backdrop-filter: blur(2px);
+            }
+
+            .modal-content {
+                position: relative;
+                background-color: var(--bg-panel);
+                margin: 8vh auto;
+                padding: 24px;
+                width: 90%;
+                max-width: 440px;
+                border-radius: var(--radius-lg);
+                box-shadow: var(--shadow-modal);
+                border: 1px solid var(--border-light);
+                animation: zoomIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            @keyframes zoomIn {
+                from {
+                    opacity: 0;
+                    transform: scale(0.96);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+            }
+
+            .modal-content .btn-group {
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                margin-top: 24px;
+                padding-top: 16px;
+                border-top: 1px solid var(--border-light);
+            }
+
+            .close {
+                position: absolute;
+                right: 20px;
+                top: 20px;
+                font-size: 20px;
+                color: var(--text-tertiary);
+                cursor: pointer;
+                line-height: 1;
+                transition: color 0.2s;
+            }
+            .close:hover {
+                color: var(--danger);
+            }
+
+            /* ================= 响应式 ================= */
+            @media screen and (max-width: 768px) {
+                .container {
+                    margin: 12px;
+                    padding: 16px;
+                    border-radius: 8px;
+                }
+                .action-bar {
+                    flex-direction: column;
+                    align-items: stretch;
+                    gap: 10px;
+                }
+                .search-bar {
+                    max-width: 100%;
+                }
+                .language-switcher {
+                    top: 12px;
+                    right: 12px;
+                }
+
+                table {
+                    border: none;
+                    border-radius: 0;
+                }
+                table,
+                thead,
+                tbody,
+                th,
+                td,
+                tr {
+                    display: block;
+                }
+                thead tr {
+                    display: none;
+                }
+
+                tr {
+                    margin-bottom: 12px;
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    padding: 8px 12px;
+                    background: #fff;
+                }
+
+                td {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 6px 0;
+                    border-bottom: 1px solid var(--bg-hover);
+                    text-align: right;
+                }
+                td:last-child {
+                    border-bottom: none;
+                    padding-bottom: 0;
+                }
+
+                td:before {
+                    content: attr(data-label);
+                    font-weight: 500;
+                    color: var(--text-secondary);
+                    text-align: left;
+                    font-size: 12px;
+                    margin-right: 12px;
+                }
+
+                .modal-content {
+                    width: 95%;
+                    padding: 20px;
+                    margin: 10vh auto;
+                }
+                .modal-content .form-group {
+                    flex-direction: column;
+                    align-items: flex-start;
+                    margin-bottom: 12px;
+                }
+                .modal-content .form-group label {
+                    margin-bottom: 4px;
+                    flex: none;
+                    font-size: 12px;
+                }
+                .modal-content .form-group input,
+                .modal-content .form-group select {
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+            }
+
+            /* ================= 2026 UI refresh overrides ================= */
+            :root {
+                --bg-body: #edf3f7;
+                --bg-panel: rgba(255, 255, 255, 0.92);
+                --bg-hover: #f5f9fc;
+                --bg-tab: rgba(15, 23, 42, 0.06);
+                --text-main: #0f172a;
+                --text-secondary: #475569;
+                --text-tertiary: #94a3b8;
+                --border-light: rgba(148, 163, 184, 0.28);
+                --border-strong: rgba(51, 65, 85, 0.12);
+                --border-focus: #0f766e;
+                --primary: #0f766e;
+                --primary-hover: #115e59;
+                --accent: #2563eb;
+                --danger: #dc2626;
+                --success: #059669;
+                --warning: #d97706;
+                --shadow-md:
+                    0 24px 50px rgba(15, 23, 42, 0.08),
+                    0 8px 20px rgba(15, 23, 42, 0.05);
+                --shadow-modal:
+                    0 32px 80px rgba(15, 23, 42, 0.16),
+                    0 12px 24px rgba(15, 23, 42, 0.08);
+            }
+
+            body {
+                min-height: 100vh;
+                min-height: 100dvh;
+                font-family: "Aptos", "Segoe UI", "Microsoft YaHei", sans-serif;
+                background:
+                    radial-gradient(
+                        circle at left top,
+                        rgba(15, 118, 110, 0.15),
+                        transparent 32%
+                    ),
+                    radial-gradient(
+                        circle at right top,
+                        rgba(37, 99, 235, 0.14),
+                        transparent 28%
+                    ),
+                    linear-gradient(
+                        180deg,
+                        #f7fbfe 0%,
+                        #eef4f8 52%,
+                        #e8eff5 100%
+                    );
+                background-image:
+                    radial-gradient(
+                        rgba(148, 163, 184, 0.15) 1px,
+                        transparent 1px
+                    ),
+                    radial-gradient(
+                        circle at left top,
+                        rgba(15, 118, 110, 0.15),
+                        transparent 32%
+                    ),
+                    radial-gradient(
+                        circle at right top,
+                        rgba(37, 99, 235, 0.14),
+                        transparent 28%
+                    ),
+                    linear-gradient(
+                        180deg,
+                        #f7fbfe 0%,
+                        #eef4f8 52%,
+                        #e8eff5 100%
+                    );
+                background-size:
+                    18px 18px,
+                    auto,
+                    auto,
+                    auto;
+            }
+
+            .container {
+                max-width: 1240px;
+                width: min(1240px, calc(100vw - 56px));
+                min-height: calc(100vh - 56px);
+                min-height: calc(100dvh - 56px);
+                margin: 28px auto;
+                padding: 30px;
+                background: var(--bg-panel);
+                border: 1px solid rgba(255, 255, 255, 0.7);
+                border-radius: 24px;
+                box-shadow: var(--shadow-md);
+                backdrop-filter: blur(18px);
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .container::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background:
+                    linear-gradient(
+                        135deg,
+                        rgba(15, 118, 110, 0.06),
+                        transparent 26%
+                    ),
+                    linear-gradient(
+                        210deg,
+                        rgba(37, 99, 235, 0.06),
+                        transparent 24%
+                    );
+                pointer-events: none;
+            }
+
+            .login-form,
+            #mainContent,
+            .modal-content {
+                position: relative;
+                z-index: 1;
+            }
+
+            .page-header {
+                display: flex;
+                align-items: flex-end;
+                justify-content: flex-start;
+                gap: 18px;
+                margin: 0 0 22px;
+                padding: 0;
+            }
+
+            .top-controls {
+                position: absolute;
+                top: 24px;
+                right: 24px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                z-index: 12;
+            }
+
+            .top-controls .language-switcher {
+                position: static;
+                top: auto;
+                right: auto;
+            }
+
+            .quick-logout {
+                height: 34px;
+                padding: 0 14px;
+                border-radius: 10px;
+                border: 1px solid rgba(148, 163, 184, 0.24);
+                background: rgba(255, 255, 255, 0.92);
+                color: var(--text-main);
+                box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+            }
+
+            .page-kicker,
+            .login-kicker {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 10px;
+                color: var(--primary);
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+            }
+
+            .page-kicker::before,
+            .login-kicker::before {
+                content: "";
+                width: 26px;
+                height: 1px;
+                background: currentColor;
+                opacity: 0.55;
+            }
+
+            .page-header h1,
+            .login-brand h2 {
+                margin-bottom: 8px;
+                font-size: 28px;
+                letter-spacing: -0.04em;
+            }
+
+            .page-subtitle,
+            .login-subtitle {
+                margin: 0;
+                color: var(--text-secondary);
+                font-size: 14px;
+            }
+
+            .tab {
+                padding: 5px;
+                border-radius: 999px;
+                border: 1px solid rgba(148, 163, 184, 0.22);
+                background: rgba(255, 255, 255, 0.72);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+            }
+
+            .tab-toolbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 18px;
+                margin-bottom: 18px;
+            }
+
+            .toolbar-actions {
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+                gap: 12px;
+                flex: 1;
+                min-width: 0;
+            }
+
+            .toolbar-actions .action-bar {
+                width: 100%;
+                max-width: 620px;
+                margin: 0;
+                padding: 0;
+                border: none;
+                border-radius: 0;
+                background: transparent;
+                box-shadow: none;
+            }
+
+            .tab button {
+                min-width: 116px;
+                padding: 10px 20px;
+                border-radius: 999px;
+                font-weight: 600;
+            }
+
+            .tab button.active {
+                background: linear-gradient(
+                    135deg,
+                    var(--primary),
+                    var(--accent)
+                );
+                color: #fff;
+                box-shadow: 0 10px 24px rgba(15, 118, 110, 0.22);
+            }
+
+            .action-bar {
+                margin: 0 0 18px;
+                padding: 16px 18px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 20px;
+                background: rgba(255, 255, 255, 0.72);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+            }
+
+            .action-bar .search-bar {
+                flex: 1;
+                max-width: 460px;
+            }
+
+            .action-bar .add-button {
+                margin-left: auto;
+            }
+
+            .tabcontent {
+                padding-top: 0;
+            }
+
+            .table-scroll {
+                overflow: hidden;
+                width: 100%;
+            }
+
+            .search-bar {
+                width: 100%;
+                max-width: 380px;
+                height: 46px;
+                padding: 4px;
+                border-radius: 16px;
+                border: 1px solid rgba(148, 163, 184, 0.22);
+                background: rgba(255, 255, 255, 0.92);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            }
+
+            .search-bar input {
+                padding: 0 14px;
+            }
+
+            .search-bar button,
+            .btn-primary,
+            .add-button {
+                background: linear-gradient(
+                    135deg,
+                    var(--primary),
+                    var(--accent)
+                );
+                color: #fff;
+                box-shadow: 0 10px 22px rgba(15, 118, 110, 0.2);
+            }
+
+            .search-bar button {
+                min-width: 90px;
+                height: 100%;
+                margin-left: 4px;
+                border: none;
+                border-radius: 12px;
+            }
+
+            .search-bar button:hover,
+            .btn-primary:hover,
+            .add-button:hover {
+                background: linear-gradient(
+                    135deg,
+                    var(--primary-hover),
+                    #1d4ed8
+                );
+                color: #fff;
+                transform: translateY(-1px);
+            }
+
+            .btn,
+            .add-button {
+                height: 42px;
+                padding: 0 18px;
+                border-radius: 14px;
+                font-weight: 600;
+            }
+
+            .btn-secondary {
+                background: rgba(255, 255, 255, 0.92);
+                border-color: rgba(148, 163, 184, 0.22);
+                box-shadow: none;
+            }
+
+            table {
+                width: 100%;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 20px;
+                background: rgba(255, 255, 255, 0.92);
+                overflow: hidden;
+            }
+
+            th {
+                background: rgba(248, 250, 252, 0.96);
+                color: #355166;
+                font-size: var(--list-font-size);
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+            }
+
+            th,
+            td {
+                padding: 14px 16px;
+                vertical-align: top;
+                border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+            }
+
+            tr:hover td {
+                background: #f7fbfd;
+            }
+
+            .action-buttons {
+                display: flex;
+                width: 100%;
+                gap: 6px;
+                justify-content: flex-start;
+                align-items: center;
+                flex-wrap: nowrap;
+            }
+
+            .action-button {
+                flex: none;
+                width: 34px;
+                height: 34px;
+                padding: 0;
+                border-radius: 10px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(255, 255, 255, 0.92);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+                    0 4px 10px rgba(15, 23, 42, 0.05);
+                transition:
+                    transform 0.18s ease,
+                    box-shadow 0.18s ease,
+                    border-color 0.18s ease,
+                    background 0.18s ease,
+                    color 0.18s ease;
+            }
+
+            .action-button svg {
+                width: var(--list-action-icon-size);
+                height: var(--list-action-icon-size);
+                display: block;
+                pointer-events: none;
+            }
+
+            .action-button:hover {
+                transform: translateY(-1px);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+                    0 8px 16px rgba(15, 23, 42, 0.08);
+            }
+
+            .action-button:focus-visible {
+                outline: none;
+                box-shadow:
+                    0 0 0 3px rgba(37, 99, 235, 0.14),
+                    0 8px 16px rgba(15, 23, 42, 0.06);
+            }
+
+            .action-button.btn-primary {
+                color: #2563eb;
+                background: rgba(239, 246, 255, 0.9);
+                border-color: rgba(37, 99, 235, 0.18);
+            }
+
+            .action-button.btn-primary:hover {
+                color: #1d4ed8;
+                background: rgba(219, 234, 254, 0.96);
+                border-color: rgba(37, 99, 235, 0.3);
+            }
+
+            .action-button.btn-danger {
+                color: #dc2626;
+                background: rgba(254, 242, 242, 0.94);
+                border-color: rgba(239, 68, 68, 0.2);
+            }
+
+            .action-button.btn-danger:hover {
+                color: #b91c1c;
+                background: rgba(254, 226, 226, 0.96);
+                border-color: rgba(239, 68, 68, 0.3);
+            }
+
+            .action-button.btn-success {
+                color: #0f766e;
+                background: rgba(236, 253, 245, 0.94);
+                border-color: rgba(16, 185, 129, 0.2);
+            }
+
+            .action-button.btn-success:hover {
+                color: #115e59;
+                background: rgba(204, 251, 241, 0.98);
+                border-color: rgba(20, 184, 166, 0.28);
+            }
+
+            .action-button.btn-warning {
+                color: #b45309;
+                background: rgba(255, 247, 237, 0.96);
+                border-color: rgba(245, 158, 11, 0.22);
+            }
+
+            .action-button.btn-warning:hover {
+                color: #92400e;
+                background: rgba(254, 215, 170, 0.98);
+                border-color: rgba(245, 158, 11, 0.3);
+            }
+
+            .action-buttons.compact-actions {
+                justify-content: flex-start;
+                gap: 6px;
+            }
+
+            .action-buttons.compact-actions .action-button {
+                width: 34px;
+            }
+
+            .action-button:disabled {
+                opacity: 0.48;
+                cursor: not-allowed;
+                box-shadow: none;
+            }
+
+            .form-hint {
+                margin: -6px 0 0 112px;
+                font-size: 12px;
+                color: var(--warning);
+            }
+
+            .status-badge,
+            .compression-pill,
+            .protocol-chip,
+            .meta-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                padding: 4px 8px;
+                border-radius: 999px;
+                font-size: var(--list-font-size);
+                font-weight: 700;
+                border: 1px solid transparent;
+                white-space: nowrap;
+                line-height: 1;
+            }
+
+            .status-badge {
+                background: rgba(248, 250, 252, 0.94);
+                border-color: rgba(148, 163, 184, 0.2);
+            }
+
+            .status-badge::before {
+                content: none;
+                display: none;
+            }
+
+            .badge-icon {
+                width: 16px;
+                height: 16px;
+                flex: none;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 999px;
+            }
+
+            .badge-icon svg {
+                width: 13px;
+                height: 13px;
+                display: block;
+                pointer-events: none;
+            }
+
+            .status-badge-online {
+                color: var(--success);
+                background: linear-gradient(
+                    135deg,
+                    rgba(236, 253, 245, 0.98),
+                    rgba(209, 250, 229, 0.92)
+                );
+                border-color: rgba(16, 185, 129, 0.26);
+            }
+
+            .status-badge-enabled {
+                color: #fff;
+                background: linear-gradient(
+                    135deg,
+                    #0f766e,
+                    #0f766e 35%,
+                    #2563eb
+                );
+                border-color: rgba(37, 99, 235, 0.2);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+                    0 8px 16px rgba(37, 99, 235, 0.18);
+            }
+
+            .status-badge-enabled .badge-icon {
+                color: #0f766e;
+                background: rgba(255, 255, 255, 0.96);
+                box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+            }
+
+            .status-badge-offline,
+            .status-badge-disabled {
+                color: #64748b;
+                background: linear-gradient(
+                    135deg,
+                    rgba(248, 250, 252, 0.96),
+                    rgba(226, 232, 240, 0.94)
+                );
+                border-color: rgba(148, 163, 184, 0.2);
+            }
+
+            .status-badge-online .badge-icon {
+                color: #059669;
+                background: rgba(16, 185, 129, 0.12);
+            }
+
+            .status-badge-offline .badge-icon,
+            .status-badge-disabled .badge-icon {
+                color: #64748b;
+                background: rgba(148, 163, 184, 0.16);
+            }
+
+            @keyframes statusPulse {
+                0%,
+                100% {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                50% {
+                    transform: scale(1.15);
+                    opacity: 0.85;
+                }
+            }
+
+            .compression-pill-on {
+                color: #0f766e;
+                background: linear-gradient(
+                    135deg,
+                    rgba(236, 253, 245, 0.98),
+                    rgba(204, 251, 241, 0.92)
+                );
+                border-color: rgba(16, 185, 129, 0.26);
+            }
+
+            .compression-pill-off {
+                color: #9a3412;
+                background: linear-gradient(
+                    135deg,
+                    rgba(255, 247, 237, 0.98),
+                    rgba(254, 215, 170, 0.9)
+                );
+                border-color: rgba(249, 115, 22, 0.18);
+            }
+
+            .compression-pill-on .badge-icon {
+                color: #0f766e;
+                background: rgba(15, 118, 110, 0.12);
+            }
+
+            .compression-pill-off .badge-icon {
+                color: #c2410c;
+                background: rgba(249, 115, 22, 0.12);
+            }
+
+            .protocol-chip {
+                color: #1d4ed8;
+                background: rgba(37, 99, 235, 0.08);
+                border-color: rgba(37, 99, 235, 0.18);
+                white-space: nowrap;
+            }
+
+            .meta-pill {
+                color: var(--text-secondary);
+                background: rgba(241, 245, 249, 0.92);
+                border-color: rgba(148, 163, 184, 0.18);
+            }
+
+            .stack-cell {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                min-width: 160px;
+            }
+
+            .stack-title {
+                font-weight: 700;
+                color: var(--text-main);
+                line-height: 1.4;
+                word-break: break-all;
+            }
+
+            .stack-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .muted-text {
+                color: var(--text-tertiary);
+            }
+
+            .description-text {
+                max-width: 280px;
+                line-height: 1.55;
+                word-break: break-word;
+            }
+
+            #tunnelTable,
+            #playerTable {
+                table-layout: fixed;
+            }
+
+            #tunnelTable th,
+            #playerTable th {
+                vertical-align: middle;
+                font-size: var(--list-font-size);
+                padding: 11px 8px;
+                white-space: nowrap;
+                word-break: keep-all;
+                overflow-wrap: normal;
+            }
+
+            #tunnelTable td,
+            #playerTable td {
+                vertical-align: middle;
+                font-size: var(--list-font-size);
+                padding: 11px 10px;
+                word-break: break-word;
+                overflow-wrap: anywhere;
+            }
+
+            #playerTable th:nth-child(1) {
+                width: 14%;
+            }
+
+            #playerTable th:nth-child(2),
+            #playerTable th:nth-child(3) {
+                width: 22%;
+            }
+
+            #playerTable th:nth-child(4) {
+                width: 10%;
+            }
+
+            #playerTable th:last-child {
+                width: 32%;
+            }
+
+            #tunnelTable th:nth-child(1),
+            #tunnelTable th:nth-child(3) {
+                width: 9%;
+            }
+
+            #tunnelTable th:nth-child(2),
+            #tunnelTable th:nth-child(4) {
+                width: 12%;
+            }
+
+            #tunnelTable th:nth-child(5) {
+                width: 12%;
+            }
+
+            #tunnelTable th:nth-child(6) {
+                width: 10%;
+            }
+
+            #tunnelTable th:nth-child(7) {
+                width: 20%;
+            }
+
+            #tunnelTable th:last-child {
+                width: 16%;
+            }
+
+            .cell-ellipsis {
+                display: block;
+                white-space: normal;
+                line-height: 1.45;
+            }
+
+            .cell-ellipsis.mono {
+                font-family: Consolas, "SFMono-Regular", monospace;
+                font-size: inherit;
+            }
+
+            .id-chip {
+                display: block;
+                width: 100%;
+                min-width: 0;
+                padding: 0;
+                background: none;
+                border: none;
+                color: var(--text-main);
+                font-weight: 600;
+                font-size: var(--list-font-size);
+                text-align: center;
+                word-break: break-word;
+            }
+
+            .sortable-header {
+                cursor: pointer;
+                user-select: none;
+                transition: color 0.18s ease;
+                white-space: nowrap;
+            }
+
+            .sortable-header:hover {
+                color: var(--primary);
+            }
+
+            .th-content {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 4px;
+                width: 100%;
+                white-space: nowrap;
+            }
+
+            .sort-indicator {
+                width: 10px;
+                flex: none;
+                text-align: center;
+                font-size: 10px;
+                color: #94a3b8;
+            }
+
+            .sortable-header.active .sort-indicator {
+                color: var(--primary);
+            }
+
+            .empty-state-row td {
+                padding: 28px 16px;
+                text-align: center;
+                color: var(--text-secondary);
+            }
+
+            .login-form {
+                max-width: 420px;
+                margin: 12vh auto;
+                padding: 38px 34px;
+                border-radius: 24px;
+                background: rgba(255, 255, 255, 0.96);
+                border: 1px solid rgba(255, 255, 255, 0.82);
+                box-shadow: var(--shadow-modal);
+            }
+
+            .login-brand {
+                margin-bottom: 22px;
+            }
+
+            .login-form .form-group {
+                margin-bottom: 12px;
+            }
+
+            .login-form .form-group input {
+                height: 44px;
+                border-radius: 14px;
+                padding: 0 14px;
+            }
+
+            .login-form .btn-primary {
+                width: 100%;
+                margin-top: 12px;
+                height: 44px;
+                border-radius: 14px;
+            }
+
+            .modal-content {
+                max-width: 500px;
+                margin: 6vh auto;
+                padding: 28px;
+                border-radius: 24px;
+                border: 1px solid rgba(255, 255, 255, 0.82);
+                background: rgba(255, 255, 255, 0.97);
+            }
+
+            .modal-content.tunnel-modal {
+                width: min(92vw, 880px);
+                max-width: 880px;
+                padding: 30px;
+            }
+
+            .modal-content.tunnel-modal h2 {
+                margin-bottom: 20px;
+            }
+
+            .tunnel-form-grid {
+                display: grid;
+                grid-template-columns: repeat(12, minmax(0, 1fr));
+                gap: 14px;
+            }
+
+            .tunnel-form-grid .form-group {
+                margin-bottom: 0;
+                min-height: 58px;
+                padding: 8px 14px;
+                align-items: center;
+                gap: 12px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 18px;
+                background: linear-gradient(
+                    180deg,
+                    rgba(255, 255, 255, 0.98),
+                    rgba(248, 250, 252, 0.92)
+                );
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+                    0 10px 24px rgba(15, 23, 42, 0.05);
+                transition:
+                    border-color 0.2s ease,
+                    transform 0.2s ease,
+                    box-shadow 0.2s ease;
+            }
+
+            .tunnel-form-grid .form-group label {
+                flex: 0 0 92px;
+                margin: 0;
+                color: #33506a;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.02em;
+            }
+
+            .tunnel-form-grid .form-group:hover,
+            .tunnel-form-grid .form-group:focus-within {
+                border-color: rgba(37, 99, 235, 0.24);
+                transform: translateY(-1px);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+                    0 14px 32px rgba(37, 99, 235, 0.08);
+            }
+
+            .tunnel-form-grid .form-group input,
+            .tunnel-form-grid .form-group select {
+                height: 40px;
+                min-width: 0;
+                padding: 0 14px;
+                border-radius: 12px;
+                border-color: rgba(148, 163, 184, 0.22);
+                background: rgba(255, 255, 255, 0.98);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+            }
+
+            .password-inline {
+                flex: 1 1 auto;
+                min-width: 0;
+                position: relative;
+                display: flex;
+                align-items: center;
+            }
+
+            .tunnel-form-grid .password-inline input {
+                flex: 1 1 auto;
+                width: 100%;
+                padding-right: 44px;
+            }
+
+            .password-toggle-button {
+                position: absolute;
+                right: 8px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 26px;
+                height: 26px;
+                padding: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border: none;
+                border-radius: 999px;
+                background: transparent;
+                color: #64748b;
+                cursor: pointer;
+                transition:
+                    color 0.2s ease,
+                    background 0.2s ease;
+            }
+
+            .password-toggle-button:hover {
+                color: var(--primary);
+                background: rgba(37, 99, 235, 0.08);
+            }
+
+            .password-toggle-button:focus-visible {
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+            }
+
+            .password-toggle-button svg {
+                width: 16px;
+                height: 16px;
+                display: block;
+                pointer-events: none;
+            }
+
+            .tunnel-field-half {
+                grid-column: span 6;
+            }
+
+            .tunnel-field-third {
+                grid-column: span 4;
+            }
+
+            .tunnel-field-wide {
+                grid-column: span 5;
+            }
+
+            .tunnel-field-compact {
+                grid-column: span 2;
+            }
+
+            .form-span-2 {
+                grid-column: 1 / -1;
+            }
+
+            .checkbox-card {
+                justify-content: space-between;
+            }
+
+            .checkbox-card {
+                background: linear-gradient(
+                    135deg,
+                    rgba(240, 249, 255, 0.98),
+                    rgba(239, 246, 255, 0.92)
+                );
+            }
+
+            .checkbox-card label {
+                margin: 0;
+                flex: 1 1 auto;
+                white-space: nowrap;
+            }
+
+            .checkbox-card.tunnel-field-compact {
+                padding-left: 12px;
+                padding-right: 12px;
+                gap: 8px;
+            }
+
+            .checkbox-card.tunnel-field-compact label {
+                flex: 0 1 auto;
+                font-size: 11px;
+            }
+
+            .checkbox-card input[type="checkbox"] {
+                margin: 0;
+                width: 48px;
+                height: 28px;
+                flex: none;
+                appearance: none;
+                border: none;
+                border-radius: 999px;
+                background: rgba(148, 163, 184, 0.45);
+                cursor: pointer;
+                position: relative;
+                transition:
+                    background 0.2s ease,
+                    box-shadow 0.2s ease;
+                box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.16);
+            }
+
+            .checkbox-card input[type="checkbox"]::after {
+                content: "";
+                position: absolute;
+                top: 3px;
+                left: 3px;
+                width: 22px;
+                height: 22px;
+                border-radius: 50%;
+                background: #fff;
+                box-shadow: 0 4px 10px rgba(15, 23, 42, 0.16);
+                transition: transform 0.2s ease;
+            }
+
+            .checkbox-card input[type="checkbox"]:checked {
+                background: linear-gradient(
+                    135deg,
+                    var(--primary),
+                    var(--accent)
+                );
+                box-shadow:
+                    inset 0 1px 2px rgba(255, 255, 255, 0.3),
+                    0 8px 18px rgba(37, 99, 235, 0.18);
+            }
+
+            .checkbox-card input[type="checkbox"]:checked::after {
+                transform: translateX(20px);
+            }
+
+            .checkbox-card input[type="checkbox"]:focus {
+                outline: none;
+                box-shadow:
+                    0 0 0 3px rgba(37, 99, 235, 0.12),
+                    inset 0 2px 4px rgba(15, 23, 42, 0.12);
+            }
+
+            @media screen and (max-width: 900px) {
+                .page-header {
+                    align-items: flex-start;
+                    flex-direction: column;
+                }
+
+                .tunnel-form-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+
+                .tunnel-field-wide,
+                .tunnel-field-compact,
+                .tunnel-field-third,
+                .tunnel-field-half {
+                    grid-column: span 1;
+                }
+
+                .form-span-2 {
+                    grid-column: 1 / -1;
+                }
+            }
+
+            @media screen and (max-width: 640px) {
+                .modal-content.tunnel-modal {
+                    width: calc(100vw - 20px);
+                    padding: 20px 16px;
+                }
+
+                .tunnel-form-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                .tunnel-field-wide,
+                .tunnel-field-compact,
+                .tunnel-field-third,
+                .tunnel-field-half,
+                .form-span-2 {
+                    grid-column: auto;
+                }
+
+                .tunnel-form-grid .form-group {
+                    padding: 12px;
+                    flex-direction: column;
+                    align-items: stretch;
+                    min-height: 0;
+                }
+
+                .tunnel-form-grid .form-group label {
+                    flex: none;
+                }
+
+                .tunnel-form-grid .checkbox-card {
+                    flex-direction: row;
+                    align-items: center;
+                }
+
+                .password-inline {
+                    width: 100%;
+                }
+            }
+
+            @media screen and (max-width: 768px) {
+                .tab-toolbar {
+                    flex-direction: column;
+                    align-items: stretch;
+                    gap: 14px;
+                }
+
+                .toolbar-actions {
+                    width: 100%;
+                }
+
+                .toolbar-actions .action-bar {
+                    max-width: none;
+                }
+
+                .container {
+                    margin: 12px;
+                    width: auto;
+                    min-height: calc(100vh - 24px);
+                    min-height: calc(100dvh - 24px);
+                    padding: 18px;
+                }
+
+                .action-bar {
+                    padding: 14px;
+                }
+
+                .top-controls {
+                    position: static;
+                    justify-content: flex-end;
+                    margin-bottom: 14px;
+                }
+
+                .search-bar {
+                    max-width: 100%;
+                }
+
+                .action-bar .add-button {
+                    margin-left: 0;
+                }
+
+                .page-header h1,
+                .login-brand h2 {
+                    font-size: 24px;
+                }
+
+                th,
+                td {
+                    font-size: var(--list-font-size);
+                    padding: 10px 8px;
+                }
+
+                .modal-content {
+                    padding: 22px 18px;
+                }
+
+                tr {
+                    border-radius: 16px;
+                    background: rgba(255, 255, 255, 0.95);
+                }
+
+                td {
+                    text-align: left;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 8px;
+                }
+
+                td:before {
+                    margin-right: 0;
+                }
+
+                .action-buttons {
+                    flex-wrap: wrap;
+                }
+
+                .action-button {
+                    flex: 0 1 auto;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <!-- 登录表单 -->
+            <div id="loginForm" class="login-form" style="display: none">
+                <div class="language-switcher">
+                    <button class="language-btn" onclick="changeLanguage('zh')">
+                        中文
+                    </button>
+                    <button class="language-btn" onclick="changeLanguage('en')">
+                        EN
+                    </button>
+                </div>
+                <div class="login-brand">
+                    <div class="login-kicker">gpipe control</div>
+                    <h2 data-i18n="login_title">登录</h2>
+                    <p class="login-subtitle" data-i18n="login_subtitle">
+                        输入后台账号后进入管理系统
+                    </p>
+                </div>
+                <form onsubmit="handleLoginSubmit(event)">
+                    <div class="form-group">
+                        <input
+                            type="text"
+                            id="username"
+                            data-i18n-placeholder="username_placeholder"
+                            placeholder="用户名"
+                            autocomplete="username"
+                        />
+                    </div>
+                    <div class="form-group">
+                        <input
+                            type="password"
+                            id="password"
+                            data-i18n-placeholder="password_placeholder"
+                            placeholder="密码"
+                            autocomplete="current-password"
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        class="btn btn-primary"
+                        data-i18n="login_button"
+                    >
+                        登录
+                    </button>
+                </form>
+            </div>
+
+            <!-- 主内容 -->
+            <div id="mainContent" style="display: none">
+                <div class="top-controls">
+                    <div class="language-switcher">
+                        <button
+                            class="language-btn"
+                            onclick="changeLanguage('zh')"
+                        >
+                            中文
+                        </button>
+                        <button
+                            class="language-btn"
+                            onclick="changeLanguage('en')"
+                        >
+                            EN
+                        </button>
+                    </div>
+                    <button
+                        class="btn btn-secondary quick-logout"
+                        onclick="logout()"
+                        data-i18n="logout_button"
+                    >
+                        退出登录
+                    </button>
+                </div>
+                <div class="page-header">
+                    <div>
+                        <div class="page-kicker">gpipe control</div>
+                        <h1 data-i18n="console_title">管理控制台</h1>
+                    </div>
+                </div>
+
+                <div class="tab-toolbar">
+                    <div class="tab">
+                        <button
+                            class="tablinks"
+                            onclick="openTab(event, 'Players')"
+                            id="defaultOpen"
+                            data-i18n="player_management"
+                        >
+                            玩家管理
+                        </button>
+                        <button
+                            class="tablinks"
+                            onclick="openTab(event, 'Tunnels')"
+                            data-i18n="tunnel_management"
+                        >
+                            隧道管理
+                        </button>
+                    </div>
+                    <div class="toolbar-actions">
+                        <div id="playerToolbar" class="action-bar">
+                            <div class="search-bar">
+                                <input
+                                    type="text"
+                                    id="playerSearch"
+                                    data-i18n-placeholder="search_player_placeholder"
+                                    placeholder="搜索备注..."
+                                    oninput="schedulePlayerSearch()"
+                                    onkeypress="
+                                        handleSearchKeyPress(event, 'player')
+                                    "
+                                />
+                                <button
+                                    onclick="searchPlayers()"
+                                    data-i18n="search_button"
+                                >
+                                    搜索
+                                </button>
+                            </div>
+                            <button
+                                class="add-button"
+                                onclick="showAddPlayerModal()"
+                                data-i18n="add_player"
+                            >
+                                添加玩家
+                            </button>
+                        </div>
+                        <div
+                            id="tunnelToolbar"
+                            class="action-bar"
+                            style="display: none"
+                        >
+                            <div class="search-bar">
+                                <input
+                                    type="search"
+                                    id="tunnelPlayerIdSearch"
+                                    data-i18n-placeholder="search_tunnel_placeholder"
+                                    placeholder="输入玩家ID或描述关键字"
+                                    oninput="scheduleTunnelSearch()"
+                                    onkeypress="
+                                        handleSearchKeyPress(event, 'tunnel')
+                                    "
+                                    autocomplete="off"
+                                />
+                                <button
+                                    onclick="loadTunnels()"
+                                    data-i18n="search_button"
+                                >
+                                    搜索
+                                </button>
+                            </div>
+                            <button
+                                class="add-button"
+                                onclick="showAddTunnelModal()"
+                                data-i18n="add_tunnel"
+                            >
+                                添加隧道
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 玩家管理 -->
+                <div id="Players" class="tabcontent">
+                    <div class="table-scroll">
+                        <table id="playerTable">
+                            <tr>
+                                <th data-i18n="id">ID</th>
+                                <th data-i18n="player_remark">备注</th>
+                                <th data-i18n="player_key">密钥</th>
+                                <th data-i18n="online_status">在线状态</th>
+                                <th data-i18n="actions">操作</th>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 隧道管理 -->
+                <div id="Tunnels" class="tabcontent">
+                    <div class="table-scroll">
+                        <table id="tunnelTable">
+                            <tr>
+                                <th data-i18n="receiver_id">隧道入口ID</th>
+                                <th data-i18n="source">监听地址</th>
+                                <th data-i18n="sender_id">隧道出口ID</th>
+                                <th data-i18n="target_tab_title">目标</th>
+                                <th data-i18n="protocol_type">协议类型</th>
+                                <th data-i18n="status">状态</th>
+                                <th data-i18n="compression_status">压缩</th>
+                                <th data-i18n="description">描述</th>
+                                <th data-i18n="actions">操作</th>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 添加玩家 Modal -->
+            <div id="addPlayerModal" class="modal">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('addPlayerModal')"
+                        >&times;</span
+                    >
+                    <h2 data-i18n="add_player">添加玩家</h2>
+                    <div class="form-group">
+                        <label for="newPlayerRemark" data-i18n="player_remark"
+                            >备注：</label
+                        >
+                        <input
+                            type="text"
+                            id="newPlayerRemark"
+                            data-i18n-placeholder="enter_remark_placeholder"
+                            placeholder="请输入备注"
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label for="newPlayerKey" data-i18n="player_key"
+                            >密钥：</label
+                        >
+                        <div class="input-with-action">
+                            <input
+                                type="text"
+                                id="newPlayerKey"
+                                data-i18n-placeholder="enter_key_placeholder"
+                                placeholder="请输入密钥"
+                            />
+                            <button
+                                type="button"
+                                class="input-icon-button"
+                                onclick="generatePlayerKey('newPlayerKey')"
+                                data-generate-key-button
+                                aria-label="一键生成"
+                                title="一键生成"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 3v4"></path>
+                                    <path d="M12 17v4"></path>
+                                    <path d="M4.22 4.22l2.83 2.83"></path>
+                                    <path d="M16.95 16.95l2.83 2.83"></path>
+                                    <path d="M3 12h4"></path>
+                                    <path d="M17 12h4"></path>
+                                    <path d="M4.22 19.78l2.83-2.83"></path>
+                                    <path d="M16.95 7.05l2.83-2.83"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button
+                            class="btn btn-secondary"
+                            onclick="closeModal('addPlayerModal')"
+                            data-i18n="cancel_button"
+                        >
+                            取消
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            onclick="addPlayer()"
+                            data-i18n="add_button"
+                        >
+                            添加
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 修改玩家 Modal -->
+            <div id="editPlayerModal" class="modal">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('editPlayerModal')"
+                        >&times;</span
+                    >
+                    <h2 data-i18n="edit_player">修改玩家</h2>
+                    <div class="form-group">
+                        <label for="editPlayerRemark" data-i18n="player_remark"
+                            >备注：</label
+                        >
+                        <input
+                            type="text"
+                            id="editPlayerRemark"
+                            data-i18n-placeholder="remark_placeholder"
+                            placeholder="备注"
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label for="editPlayerKey" data-i18n="player_key"
+                            >密钥：</label
+                        >
+                        <div class="input-with-action">
+                            <input
+                                type="text"
+                                id="editPlayerKey"
+                                data-i18n-placeholder="enter_new_key_placeholder"
+                                placeholder="请输入新密钥"
+                            />
+                            <button
+                                type="button"
+                                class="input-icon-button"
+                                onclick="generatePlayerKey('editPlayerKey')"
+                                data-generate-key-button
+                                aria-label="一键生成"
+                                title="一键生成"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 3v4"></path>
+                                    <path d="M12 17v4"></path>
+                                    <path d="M4.22 4.22l2.83 2.83"></path>
+                                    <path d="M16.95 16.95l2.83 2.83"></path>
+                                    <path d="M3 12h4"></path>
+                                    <path d="M17 12h4"></path>
+                                    <path d="M4.22 19.78l2.83-2.83"></path>
+                                    <path d="M16.95 7.05l2.83-2.83"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        id="editPlayerKeyHint"
+                        class="form-hint"
+                        data-i18n="online_player_key_locked_hint"
+                        style="display: none"
+                    >
+                        在线玩家仅允许修改备注，密钥需要离线后再改
+                    </div>
+                    <div class="btn-group">
+                        <button
+                            class="btn btn-secondary"
+                            onclick="closeModal('editPlayerModal')"
+                            data-i18n="cancel_button"
+                        >
+                            取消
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            onclick="updatePlayer()"
+                            data-i18n="update_button"
+                        >
+                            更新
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 添加隧道 Modal -->
+            <div id="addTunnelModal" class="modal">
+                <div class="modal-content tunnel-modal">
+                    <span class="close" onclick="closeModal('addTunnelModal')"
+                        >&times;</span
+                    >
+                    <h2 data-i18n="add_tunnel">添加隧道</h2>
+                    <div class="tunnel-form-grid">
+                        <div class="form-group tunnel-field-wide">
+                            <label for="newTunnelType" data-i18n="protocol_type"
+                                >协议类型：</label
+                            >
+                            <select
+                                id="newTunnelType"
+                                onchange="toggleTunnelTypeFields('new')"
+                            >
+                                <option value="0" data-i18n="tcp">TCP</option>
+                                <option value="1" data-i18n="udp">UDP</option>
+                                <option value="2" data-i18n="socks5">
+                                    SOCKS5
+                                </option>
+                                <option value="3" data-i18n="http">HTTP</option>
+                                <option value="4" data-i18n="shadowsocks">
+                                    Shadowsocks
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-group tunnel-field-wide">
+                            <label
+                                for="newTunnelEncryption"
+                                data-i18n="encryption_method"
+                                >加密方式：</label
+                            >
+                            <select id="newTunnelEncryption">
+                                <option value="None" data-i18n="none">
+                                    None
+                                </option>
+                                <option value="Aes128" data-i18n="aes128">
+                                    Aes128
+                                </option>
+                                <option value="Xor" data-i18n="xor">Xor</option>
+                            </select>
+                        </div>
+                        <div
+                            class="form-group checkbox-card tunnel-field-compact"
+                        >
+                            <label
+                                for="newTunnelCompressed"
+                                data-i18n="enable_compression"
+                                >启用压缩：</label
+                            >
+                            <input
+                                type="checkbox"
+                                id="newTunnelCompressed"
+                                checked
+                            />
+                        </div>
+                        <div class="form-group tunnel-field-half">
+                            <label
+                                for="newTunnelReceiver"
+                                data-i18n="receiver_id"
+                                >隧道入口ID：</label
+                            >
+                            <input
+                                type="text"
+                                id="newTunnelReceiver"
+                                data-i18n-placeholder="receiver_id_placeholder"
+                                placeholder="隧道入口ID"
+                                value="0"
+                                inputmode="numeric"
+                            />
+                        </div>
+                        <div class="form-group tunnel-field-half">
+                            <label for="newTunnelSender" data-i18n="sender_id"
+                                >隧道出口ID：</label
+                            >
+                            <input
+                                type="text"
+                                id="newTunnelSender"
+                                data-i18n-placeholder="sender_id_placeholder"
+                                placeholder="隧道出口ID"
+                                value="0"
+                                inputmode="numeric"
+                            />
+                        </div>
+                        <div class="form-group tunnel-field-half">
+                            <label for="newTunnelSource" data-i18n="source"
+                                >监听地址：</label
+                            >
+                            <input
+                                type="text"
+                                id="newTunnelSource"
+                                data-i18n-placeholder="source_placeholder"
+                                placeholder="监听地址"
+                            />
+                        </div>
+                        <div
+                            class="form-group tunnel-field-half"
+                            id="newTunnelEndpointGroup"
+                            style="display: none"
+                        >
+                            <label for="newTunnelEndpoint" data-i18n="target"
+                                >目标：</label
+                            >
+                            <input
+                                type="text"
+                                id="newTunnelEndpoint"
+                                data-i18n-placeholder="target_placeholder"
+                                placeholder="目标"
+                            />
+                        </div>
+                        <div
+                            class="form-group tunnel-field-half"
+                            id="newTunnelUsernameGroup"
+                            style="display: none"
+                        >
+                            <label for="newTunnelUsername" data-i18n="username"
+                                >用户名：</label
+                            >
+                            <input
+                                type="text"
+                                id="newTunnelUsername"
+                                data-i18n-placeholder="username_placeholder"
+                                placeholder="用户名"
+                            />
+                        </div>
+                        <div
+                            class="form-group tunnel-field-half"
+                            id="newTunnelPasswordGroup"
+                            style="display: none"
+                        >
+                            <label for="newTunnelPassword" data-i18n="password"
+                                >密码：</label
+                            >
+                            <input
+                                type="password"
+                                id="newTunnelPassword"
+                                data-i18n-placeholder="password_placeholder"
+                                placeholder="密码"
+                            />
+                        </div>
+                        <div class="form-group form-span-2">
+                            <label
+                                for="newTunnelDescription"
+                                data-i18n="description"
+                                >描述：</label
+                            >
+                            <input
+                                type="text"
+                                id="newTunnelDescription"
+                                data-i18n-placeholder="description_placeholder"
+                                placeholder="描述"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="btn-group">
+                        <button
+                            class="btn btn-secondary"
+                            onclick="closeModal('addTunnelModal')"
+                            data-i18n="cancel_button"
+                        >
+                            取消
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            onclick="addTunnel()"
+                            data-i18n="add_button"
+                        >
+                            添加
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 修改隧道 Modal -->
+            <div id="editTunnelModal" class="modal">
+                <div class="modal-content tunnel-modal">
+                    <span class="close" onclick="closeModal('editTunnelModal')"
+                        >&times;</span
+                    >
+                    <h2 data-i18n="edit_tunnel">修改隧道</h2>
+                    <div class="tunnel-form-grid">
+                        <div class="form-group tunnel-field-wide">
+                            <label
+                                for="editTunnelType"
+                                data-i18n="protocol_type"
+                                >协议类型：</label
+                            >
+                            <select
+                                id="editTunnelType"
+                                onchange="toggleTunnelTypeFields('edit')"
+                            >
+                                <option value="0" data-i18n="tcp">TCP</option>
+                                <option value="1" data-i18n="udp">UDP</option>
+                                <option value="2" data-i18n="socks5">
+                                    SOCKS5
+                                </option>
+                                <option value="3" data-i18n="http">HTTP</option>
+                                <option value="4" data-i18n="shadowsocks">
+                                    Shadowsocks
+                                </option>
+                            </select>
+                        </div>
+                        <div class="form-group tunnel-field-wide">
+                            <label
+                                for="editTunnelEncryption"
+                                data-i18n="encryption_method"
+                                >加密方式：</label
+                            >
+                            <select id="editTunnelEncryption">
+                                <option value="None" data-i18n="none">
+                                    None
+                                </option>
+                                <option value="Aes128" data-i18n="aes128">
+                                    Aes128
+                                </option>
+                                <option value="Xor" data-i18n="xor">Xor</option>
+                            </select>
+                        </div>
+                        <div
+                            class="form-group checkbox-card tunnel-field-compact"
+                        >
+                            <label
+                                for="editTunnelCompressed"
+                                data-i18n="enable_compression"
+                                >启用压缩：</label
+                            >
+                            <input type="checkbox" id="editTunnelCompressed" />
+                        </div>
+                        <div class="form-group tunnel-field-half">
+                            <label
+                                for="editTunnelReceiver"
+                                data-i18n="receiver_id"
+                                >隧道入口ID：</label
+                            >
+                            <input
+                                type="text"
+                                id="editTunnelReceiver"
+                                data-i18n-placeholder="receiver_id_placeholder"
+                                placeholder="隧道入口ID"
+                                inputmode="numeric"
+                            />
+                        </div>
+                        <div class="form-group tunnel-field-half">
+                            <label for="editTunnelSender" data-i18n="sender_id"
+                                >隧道出口ID：</label
+                            >
+                            <input
+                                type="text"
+                                id="editTunnelSender"
+                                data-i18n-placeholder="sender_id_placeholder"
+                                placeholder="隧道出口ID"
+                                inputmode="numeric"
+                            />
+                        </div>
+                        <div class="form-group tunnel-field-half">
+                            <label for="editTunnelSource" data-i18n="source"
+                                >监听地址：</label
+                            >
+                            <input
+                                type="text"
+                                id="editTunnelSource"
+                                data-i18n-placeholder="source_placeholder"
+                                placeholder="监听地址"
+                            />
+                        </div>
+                        <div
+                            class="form-group tunnel-field-half"
+                            id="editTunnelEndpointGroup"
+                            style="display: none"
+                        >
+                            <label for="editTunnelEndpoint" data-i18n="target"
+                                >目标：</label
+                            >
+                            <input
+                                type="text"
+                                id="editTunnelEndpoint"
+                                data-i18n-placeholder="target_placeholder"
+                                placeholder="目标"
+                            />
+                        </div>
+                        <div
+                            class="form-group tunnel-field-half"
+                            id="editTunnelUsernameGroup"
+                            style="display: none"
+                        >
+                            <label for="editTunnelUsername" data-i18n="username"
+                                >用户名：</label
+                            >
+                            <input
+                                type="text"
+                                id="editTunnelUsername"
+                                data-i18n-placeholder="username_placeholder"
+                                placeholder="用户名"
+                            />
+                        </div>
+                        <div
+                            class="form-group tunnel-field-half"
+                            id="editTunnelPasswordGroup"
+                            style="display: none"
+                        >
+                            <label for="editTunnelPassword" data-i18n="password"
+                                >密码：</label
+                            >
+                            <div class="password-inline">
+                                <input
+                                    type="password"
+                                    id="editTunnelPassword"
+                                    data-i18n-placeholder="password_placeholder"
+                                    placeholder="密码"
+                                />
+                                <button
+                                    type="button"
+                                    class="password-toggle-button"
+                                    id="editTunnelPasswordToggle"
+                                    onclick="toggleEditTunnelPasswordVisibility()"
+                                    aria-label="显示密码"
+                                    title="显示密码"
+                                >
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="1.8"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"
+                                        ></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group form-span-2">
+                            <label
+                                for="editTunnelDescription"
+                                data-i18n="description"
+                                >描述：</label
+                            >
+                            <input
+                                type="text"
+                                id="editTunnelDescription"
+                                data-i18n-placeholder="description_placeholder"
+                                placeholder="描述"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="btn-group">
+                        <button
+                            class="btn btn-secondary"
+                            onclick="closeModal('editTunnelModal')"
+                            data-i18n="cancel_button"
+                        >
+                            取消
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            onclick="updateTunnel()"
+                            data-i18n="update_button"
+                        >
+                            更新
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            let currentEditingPlayerId = null;
+            let currentEditingTunnelId = null;
+            let playerSearchTimer = null;
+            let tunnelSearchTimer = null;
+            const baseUrl =
+                window.location.protocol + "//" + window.location.host;
+            let currentLanguage = "zh";
+            let playersData = [];
+            let tunnelsData = [];
+            let playerSort = { key: "id", direction: "asc" };
+            let tunnelSort = { key: "receiver", direction: "asc" };
+
+            const i18nResources = {
+                zh: {
+                    login_title: "登录",
+                    login_subtitle: "输入后台账号后进入管理系统",
+                    console_title: "管理控制台",
+                    logout_button: "退出登录",
+                    username_placeholder: "用户名",
+                    password_placeholder: "密码",
+                    remark_placeholder: "备注",
+                    login_button: "登录",
+                    player_management: "玩家管理",
+                    tunnel_management: "隧道管理",
+                    add_player: "添加玩家",
+                    search_player_placeholder: "搜索备注...",
+                    search_tunnel_placeholder: "输入玩家ID或描述关键字",
+                    search_button: "搜索",
+                    id: "ID",
+                    player_remark: "备注",
+                    player_key: "密钥",
+                    username: "用户名",
+                    password: "密码",
+                    online_status: "在线状态",
+                    actions: "操作",
+                    add_tunnel: "添加隧道",
+                    source: "监听地址",
+                    target: "目标 (IP:端口)",
+                    target_tab_title: "目标",
+                    type: "类型",
+                    protocol_type: "协议类型",
+                    sender_id: "隧道出口ID",
+                    receiver_id: "隧道入口ID",
+                    status: "启用状态",
+                    compression_status: "压缩状态",
+                    description: "描述",
+                    enter_remark_placeholder: "请输入备注",
+                    enter_key_placeholder: "请输入密钥",
+                    enter_password_placeholder: "请输入密码",
+                    cancel_button: "取消",
+                    delete_button: "删除",
+                    add_button: "添加",
+                    edit_player: "修改玩家",
+                    enter_new_key_placeholder: "请输入新密钥",
+                    generate_key_button: "一键生成",
+                    update_button: "更新",
+                    enable_compression: "启用压缩",
+                    encryption_method: "加密方式",
+                    none: "None",
+                    aes128: "Aes128",
+                    xor: "Xor",
+                    description_placeholder: "请输入描述",
+                    edit_tunnel: "修改隧道",
+                    source_placeholder: "例如 0.0.0.0:1234",
+                    target_placeholder: "例如 10.2.20.203:80",
+                    sender_id_placeholder: "为0则表示出口端为服务器",
+                    receiver_id_placeholder: "为0则表示入口端为服务器",
+                    tcp: "TCP",
+                    udp: "UDP",
+                    socks5: "SOCKS5",
+                    http: "HTTP",
+                    shadowsocks: "Shadowsocks",
+                    online: "在线",
+                    offline: "离线",
+                    enabled: "启用",
+                    disabled: "禁用",
+                    compressed: "开启",
+                    uncompressed: "关闭",
+                    confirm_delete_player: "确定要删除这个玩家吗？",
+                    confirm_delete_tunnel: "确定要删除这个隧道吗？",
+                    delete_player_failed: "删除玩家失败: ",
+                    delete_tunnel_failed: "删除隧道失败: ",
+                    add_player_failed: "添加玩家失败: ",
+                    update_player_failed: "更新玩家失败: ",
+                    online_player_key_locked: "在线玩家不允许修改密钥",
+                    online_player_key_locked_hint:
+                        "在线玩家仅允许修改备注，密钥需要离线后再改",
+                    online_player_delete_forbidden: "在线玩家不允许删除",
+                    add_tunnel_failed: "添加隧道失败: ",
+                    update_tunnel_failed: "更新隧道失败: ",
+                    login_failed: "登录失败: ",
+                    shadowsocks_password_required: "Shadowsocks 协议密码不能为空",
+                    show_password: "显示密码",
+                    hide_password: "隐藏密码",
+                    tunnel_not_found: "未找到指定的隧道",
+                    empty_players: "暂无玩家数据",
+                    empty_tunnels: "暂无隧道数据",
+                    not_set: "未设置",
+                    server_side: "服务器(0)",
+                },
+                en: {
+                    login_title: "Login",
+                    login_subtitle: "Sign in to enter the control panel",
+                    console_title: "Control Console",
+                    console_subtitle:
+                        "Manage players, tunnels, and runtime status in one place",
+                    logout_button: "Logout",
+                    username_placeholder: "Username",
+                    password_placeholder: "Password",
+                    remark_placeholder: "Remark",
+                    login_button: "Login",
+                    player_management: "Players",
+                    tunnel_management: "Tunnels",
+                    add_player: "Add Player",
+                    search_player_placeholder: "Search remark...",
+                    search_tunnel_placeholder:
+                        "Search by player ID or description",
+                    search_button: "Search",
+                    id: "ID",
+                    player_remark: "Remark",
+                    player_key: "Key",
+                    username: "Username",
+                    password: "Password",
+                    online_status: "Status",
+                    actions: "Actions",
+                    add_tunnel: "Add Tunnel",
+                    source: "Listen Address",
+                    target: "Target (IP:Port)",
+                    target_tab_title: "Target",
+                    type: "Type",
+                    protocol_type: "Protocol",
+                    sender_id: "Egress ID",
+                    receiver_id: "Ingress ID",
+                    status: "Status",
+                    compression_status: "Compression",
+                    description: "Description",
+                    enter_remark_placeholder: "Enter remark",
+                    enter_key_placeholder: "Enter key",
+                    enter_password_placeholder: "Enter password",
+                    cancel_button: "Cancel",
+                    delete_button: "Delete",
+                    add_button: "Add",
+                    edit_player: "Edit Player",
+                    enter_new_key_placeholder: "Enter new key",
+                    generate_key_button: "Generate",
+                    update_button: "Update",
+                    enable_compression: "Enable Compression",
+                    encryption_method: "Encryption",
+                    none: "None",
+                    aes128: "Aes128",
+                    xor: "Xor",
+                    description_placeholder: "Enter description",
+                    edit_tunnel: "Edit Tunnel",
+                    source_placeholder: "0.0.0.0:1234",
+                    target_placeholder: "10.2.20.203:80",
+                    sender_id_placeholder: "0 = server egress",
+                    receiver_id_placeholder: "0 = server ingress",
+                    tcp: "TCP",
+                    udp: "UDP",
+                    socks5: "SOCKS5",
+                    http: "HTTP",
+                    shadowsocks: "Shadowsocks",
+                    online: "Online",
+                    offline: "Offline",
+                    enabled: "Enabled",
+                    disabled: "Disabled",
+                    compressed: "On",
+                    uncompressed: "Off",
+                    confirm_delete_player: "Delete this player?",
+                    confirm_delete_tunnel: "Delete this tunnel?",
+                    delete_player_failed: "Failed to delete player: ",
+                    delete_tunnel_failed: "Failed to delete tunnel: ",
+                    add_player_failed: "Failed to add player: ",
+                    update_player_failed: "Failed to update player: ",
+                    online_player_key_locked:
+                        "Online players cannot change the key",
+                    online_player_key_locked_hint:
+                        "Online players can only edit the remark. Change the key after disconnecting.",
+                    online_player_delete_forbidden:
+                        "Online players cannot be deleted",
+                    add_tunnel_failed: "Failed to add tunnel: ",
+                    update_tunnel_failed: "Failed to update tunnel: ",
+                    login_failed: "Login failed: ",
+                    shadowsocks_password_required:
+                        "Shadowsocks password is required",
+                    show_password: "Show password",
+                    hide_password: "Hide password",
+                    tunnel_not_found: "Tunnel not found",
+                    empty_players: "No players found",
+                    empty_tunnels: "No tunnels found",
+                    not_set: "Not set",
+                    server_side: "Server (0)",
+                },
+            };
+
+            const defaultShadowsocksMethod = "chacha20-ietf-poly1305";
+            const playerKeyCharacters =
+                "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+            const playerKeyLength = 20;
+            const tunnelTransportEncryptionOptions = [
+                { value: "None", labelKey: "none" },
+                { value: "Aes128", labelKey: "aes128" },
+                { value: "Xor", labelKey: "xor" },
+            ];
+            const tunnelShadowsocksMethodOptions = [
+                { value: defaultShadowsocksMethod, label: defaultShadowsocksMethod },
+                { value: "aes-128-gcm", label: "aes-128-gcm" },
+                { value: "aes-256-gcm", label: "aes-256-gcm" },
+            ];
+
+            window.onload = function () {
+                const savedLanguage = localStorage.getItem("language");
+                if (savedLanguage) {
+                    currentLanguage = savedLanguage;
+                }
+                updateLanguage();
+                checkLoginStatus().then((isLoggedIn) => {
+                    if (isLoggedIn) {
+                        showMainContent();
+                    } else {
+                        showLoginForm();
+                    }
+                });
+            };
+
+            function getText(key) {
+                return i18nResources[currentLanguage][key] || key;
+            }
+
+            function escapeHTML(value) {
+                return String(value ?? "").replace(
+                    /[&<>"']/g,
+                    (char) =>
+                        ({
+                            "&": "&amp;",
+                            "<": "&lt;",
+                            ">": "&gt;",
+                            '"': "&quot;",
+                            "'": "&#39;",
+                        })[char],
+                );
+            }
+
+            function encodePayload(value) {
+                return encodeURIComponent(JSON.stringify(value));
+            }
+
+            function decodePayload(payload) {
+                try {
+                    return JSON.parse(decodeURIComponent(payload));
+                } catch (error) {
+                    console.error("Decode payload failed:", error);
+                    return null;
+                }
+            }
+
+            function formatPlainValue(value, fallbackKey = "not_set") {
+                const text = String(value ?? "").trim();
+                return text === ""
+                    ? `<span class="muted-text">${escapeHTML(getText(fallbackKey))}</span>`
+                    : escapeHTML(text);
+            }
+
+            function getPlayerById(id) {
+                return (
+                    playersData.find(
+                        (player) => Number(player.id) === Number(id),
+                    ) || null
+                );
+            }
+
+            function isPlayerOnline(id) {
+                return !!getPlayerById(id)?.online;
+            }
+
+            function getDisplayText(value, fallbackKey = "not_set") {
+                const text = String(value ?? "").trim();
+                return text === "" ? getText(fallbackKey) : text;
+            }
+
+            function generateRandomPlayerKey() {
+                const bytes = new Uint8Array(playerKeyLength);
+                if (window.crypto?.getRandomValues) {
+                    window.crypto.getRandomValues(bytes);
+                } else {
+                    for (let i = 0; i < bytes.length; i += 1) {
+                        bytes[i] = Math.floor(Math.random() * 256);
+                    }
+                }
+                return Array.from(
+                    bytes,
+                    (byte) =>
+                        playerKeyCharacters[
+                            byte % playerKeyCharacters.length
+                        ],
+                ).join("");
+            }
+
+            function generatePlayerKey(inputId) {
+                const input = document.getElementById(inputId);
+                if (!input || input.readOnly || input.disabled) {
+                    return;
+                }
+                input.value = generateRandomPlayerKey();
+                input.focus();
+                input.select();
+            }
+
+            function renderPill(text, className = "meta-pill") {
+                return `<span class="${className}">${text}</span>`;
+            }
+
+            function renderStatusBadge(isActive, activeKey, inactiveKey) {
+                return `<span class="status-badge ${isActive ? "status-badge-enabled" : "status-badge-disabled"}">${
+                    isActive ? renderBadgeIcon("enabled") : renderBadgeIcon("disabled")
+                }<span>${escapeHTML(getText(isActive ? activeKey : inactiveKey))}</span></span>`;
+            }
+
+            function renderOnlineBadge(isOnline) {
+                return `<span class="status-badge ${isOnline ? "status-badge-online" : "status-badge-offline"}">${
+                    isOnline ? renderBadgeIcon("online") : renderBadgeIcon("offline")
+                }<span>${escapeHTML(getText(isOnline ? "online" : "offline"))}</span></span>`;
+            }
+
+            function renderCompressionBadge(isCompressed) {
+                return `<span class="compression-pill ${isCompressed ? "compression-pill-on" : "compression-pill-off"}">${
+                    isCompressed
+                        ? renderBadgeIcon("compress_on")
+                        : renderBadgeIcon("compress_off")
+                }<span>${escapeHTML(getText(isCompressed ? "compressed" : "uncompressed"))}</span></span>`;
+            }
+
+            function renderProtocolChip(type) {
+                const key = ["tcp", "udp", "socks5", "http", "shadowsocks"][type];
+                return `<span class="protocol-chip">${escapeHTML(
+                    key ? getText(key) : getText("not_set"),
+                )}</span>`;
+            }
+
+            function renderBadgeIcon(name) {
+                switch (name) {
+                    case "enabled":
+                        return `<span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>`;
+                    case "disabled":
+                        return `<span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9 9l6 6M15 9l-6 6"></path></svg></span>`;
+                    case "online":
+                        return `<span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18h.01"></path><path d="M8.5 14.5a5 5 0 0 1 7 0"></path><path d="M5 11a10 10 0 0 1 14 0"></path></svg></span>`;
+                    case "offline":
+                        return `<span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"></path><path d="M8.5 14.5a5 5 0 0 1 1.85-.99"></path><path d="M5 11a10 10 0 0 1 6.19-2.86"></path><path d="M15.61 12.61A5 5 0 0 1 16.5 14.5"></path><path d="M18.85 11.85A10 10 0 0 0 15 9.63"></path></svg></span>`;
+                    case "compress_on":
+                        return `<span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 9l-3 3-3-3"></path><path d="M9 15l3-3 3 3"></path><path d="M5 5h14v14H5z"></path></svg></span>`;
+                    case "compress_off":
+                        return `<span class="badge-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9l3-3 3 3"></path><path d="M15 15l-3 3-3-3"></path><path d="M5 5h14v14H5z"></path></svg></span>`;
+                    default:
+                        return "";
+                }
+            }
+
+            function renderActionIcon(name) {
+                switch (name) {
+                    case "edit":
+                        return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>`;
+                    case "delete":
+                        return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>`;
+                    case "enable":
+                        return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>`;
+                    case "disable":
+                        return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"></path></svg>`;
+                    default:
+                        return "";
+                }
+            }
+
+            function renderActionButton(
+                className,
+                title,
+                onclick,
+                iconName,
+                disabled = false,
+            ) {
+                return `<button class="action-button ${className}" type="button" title="${escapeHTML(
+                    title,
+                )}" aria-label="${escapeHTML(
+                    title,
+                )}" ${
+                    disabled
+                        ? 'disabled aria-disabled="true"'
+                        : `onclick="${onclick}"`
+                }>${renderActionIcon(iconName)}</button>`;
+            }
+
+            function renderPasswordEyeIcon(visible) {
+                if (visible) {
+                    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.58 10.58A3 3 0 0 0 9 12a3 3 0 0 0 4.42 2.63"></path><path d="M9.88 5.09A10.94 10.94 0 0 1 12 5c6.5 0 10 7 10 7a18.73 18.73 0 0 1-3.04 3.81"></path><path d="M6.61 6.61A18.74 18.74 0 0 0 2 12s3.5 7 10 7a10.94 10.94 0 0 0 5.39-1.39"></path></svg>`;
+                }
+                return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+            }
+
+            function updateGenerateKeyButtons() {
+                const label = getText("generate_key_button");
+                document
+                    .querySelectorAll("[data-generate-key-button]")
+                    .forEach((button) => {
+                        button.setAttribute("aria-label", label);
+                        button.setAttribute("title", label);
+                    });
+            }
+
+            function updateEditTunnelPasswordToggle() {
+                const input = document.getElementById("editTunnelPassword");
+                const button = document.getElementById(
+                    "editTunnelPasswordToggle",
+                );
+                if (!input || !button) {
+                    return;
+                }
+                const visible = input.type === "text";
+                const label = getText(
+                    visible ? "hide_password" : "show_password",
+                );
+                button.innerHTML = renderPasswordEyeIcon(visible);
+                button.setAttribute("aria-label", label);
+                button.setAttribute("title", label);
+            }
+
+            function setEditTunnelPasswordVisibility(visible) {
+                const input = document.getElementById("editTunnelPassword");
+                if (!input) {
+                    return;
+                }
+                input.type = visible ? "text" : "password";
+                updateEditTunnelPasswordToggle();
+            }
+
+            function toggleEditTunnelPasswordVisibility() {
+                const input = document.getElementById("editTunnelPassword");
+                if (!input) {
+                    return;
+                }
+                setEditTunnelPasswordVisibility(input.type !== "text");
+            }
+
+            function isDynamicTargetTunnelType(tunnelType) {
+                return tunnelType === 2 || tunnelType === 3 || tunnelType === 4;
+            }
+
+            function isUsernameTunnelType(tunnelType) {
+                return tunnelType === 2 || tunnelType === 3;
+            }
+
+            function isPasswordTunnelType(tunnelType) {
+                return tunnelType === 2 || tunnelType === 3 || tunnelType === 4;
+            }
+
+            function isShadowsocksTunnelType(tunnelType) {
+                return tunnelType === 4;
+            }
+
+            function syncTunnelEncryptionOptions(
+                prefix,
+                tunnelType,
+                selectedValue = null,
+            ) {
+                const select = document.getElementById(prefix + "TunnelEncryption");
+                const currentValue = selectedValue ?? select.value;
+                const options = isShadowsocksTunnelType(tunnelType)
+                    ? tunnelShadowsocksMethodOptions
+                    : tunnelTransportEncryptionOptions.map((option) => ({
+                          value: option.value,
+                          label: getText(option.labelKey),
+                      }));
+                const fallbackValue = isShadowsocksTunnelType(tunnelType)
+                    ? defaultShadowsocksMethod
+                    : "None";
+
+                select.innerHTML = "";
+                options.forEach((option) => {
+                    const element = document.createElement("option");
+                    element.value = option.value;
+                    element.textContent = option.label;
+                    select.appendChild(element);
+                });
+                select.value = options.some(
+                    (option) => option.value === currentValue,
+                )
+                    ? currentValue
+                    : fallbackValue;
+            }
+
+            function renderEmptyState(colSpan, messageKey) {
+                return `<tr class="empty-state-row"><td colspan="${colSpan}">${escapeHTML(
+                    getText(messageKey),
+                )}</td></tr>`;
+            }
+
+            function getSortIndicator(sortState, key) {
+                if (sortState.key !== key) {
+                    return "↕";
+                }
+                return sortState.direction === "asc" ? "↑" : "↓";
+            }
+
+            function renderSortableHeader(labelKey, sortState, key, handler) {
+                const activeClass =
+                    sortState.key === key
+                        ? "sortable-header active"
+                        : "sortable-header";
+                return `<th class="${activeClass}" onclick="${handler}('${key}')"><span class="th-content"><span>${escapeHTML(
+                    getText(labelKey),
+                )}</span><span class="sort-indicator">${getSortIndicator(
+                    sortState,
+                    key,
+                )}</span></span></th>`;
+            }
+
+            function normalizeSortValue(value) {
+                if (typeof value === "boolean") {
+                    return value ? 1 : 0;
+                }
+                if (typeof value === "number") {
+                    return value;
+                }
+                return String(value ?? "")
+                    .trim()
+                    .toLowerCase();
+            }
+
+            function sortCollection(items, sortState, valueGetter) {
+                return [...items].sort((left, right) => {
+                    const a = normalizeSortValue(
+                        valueGetter(left, sortState.key),
+                    );
+                    const b = normalizeSortValue(
+                        valueGetter(right, sortState.key),
+                    );
+                    let result = 0;
+                    if (typeof a === "number" && typeof b === "number") {
+                        result = a - b;
+                    } else {
+                        result = String(a).localeCompare(String(b), "zh-CN", {
+                            numeric: true,
+                            sensitivity: "base",
+                        });
+                    }
+                    if (result === 0) {
+                        const fallbackA = normalizeSortValue(
+                            valueGetter(left, "id"),
+                        );
+                        const fallbackB = normalizeSortValue(
+                            valueGetter(right, "id"),
+                        );
+                        result =
+                            typeof fallbackA === "number" &&
+                            typeof fallbackB === "number"
+                                ? fallbackA - fallbackB
+                                : String(fallbackA).localeCompare(
+                                      String(fallbackB),
+                                      "zh-CN",
+                                      {
+                                          numeric: true,
+                                          sensitivity: "base",
+                                      },
+                                  );
+                    }
+                    return sortState.direction === "asc" ? result : -result;
+                });
+            }
+
+            function updateSort(sortState, key) {
+                if (sortState.key === key) {
+                    sortState.direction =
+                        sortState.direction === "asc" ? "desc" : "asc";
+                } else {
+                    sortState.key = key;
+                    sortState.direction = "asc";
+                }
+            }
+
+            function updateLanguage() {
+                document.querySelectorAll("[data-i18n]").forEach((element) => {
+                    const key = element.getAttribute("data-i18n");
+                    if (i18nResources[currentLanguage][key]) {
+                        element.textContent =
+                            i18nResources[currentLanguage][key];
+                    }
+                });
+                document
+                    .querySelectorAll("[data-i18n-placeholder]")
+                    .forEach((element) => {
+                        const key = element.getAttribute(
+                            "data-i18n-placeholder",
+                        );
+                        if (i18nResources[currentLanguage][key]) {
+                            element.setAttribute(
+                                "placeholder",
+                                i18nResources[currentLanguage][key],
+                            );
+                        }
+                    });
+                document
+                    .querySelectorAll("select option[data-i18n]")
+                    .forEach((option) => {
+                        const key = option.getAttribute("data-i18n");
+                        if (i18nResources[currentLanguage][key]) {
+                            option.textContent =
+                                i18nResources[currentLanguage][key];
+                        }
+                    });
+                document.querySelectorAll(".language-btn").forEach((btn) => {
+                    if (
+                        btn.textContent ===
+                        (currentLanguage === "zh" ? "中文" : "EN")
+                    ) {
+                        btn.classList.add("active");
+                    } else {
+                        btn.classList.remove("active");
+                    }
+                });
+                updateGenerateKeyButtons();
+                updateEditTunnelPasswordToggle();
+                toggleTunnelTypeFields("new");
+                toggleTunnelTypeFields("edit");
+                if (
+                    document.getElementById("mainContent").style.display !==
+                    "none"
+                ) {
+                    loadPlayers();
+                    loadTunnels();
+                }
+            }
+
+            function changeLanguage(lang) {
+                currentLanguage = lang;
+                localStorage.setItem("language", lang);
+                updateLanguage();
+            }
+
+            async function apiRequest(endpoint, method, data = {}) {
+                try {
+                    const response = await fetch(baseUrl + endpoint, {
+                        method,
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data),
+                        credentials: "include",
+                    });
+                    return await response.json();
+                } catch (error) {
+                    console.error("API Error:", error);
+                    throw error;
+                }
+            }
+
+            async function checkLoginStatus() {
+                try {
+                    const data = await apiRequest("/api/player_list", "POST", {
+                        page_number: 0,
+                        page_size: 1,
+                    });
+                    return data.code !== 10086;
+                } catch (error) {
+                    return false;
+                }
+            }
+
+            function showMainContent() {
+                document.getElementById("loginForm").style.display = "none";
+                document.getElementById("mainContent").style.display = "block";
+                loadPlayers();
+                loadTunnels();
+                document.getElementById("defaultOpen").click();
+            }
+
+            function showLoginForm() {
+                document.getElementById("loginForm").style.display = "block";
+                document.getElementById("mainContent").style.display = "none";
+                document.getElementById("password").value = "";
+                setTimeout(() => {
+                    const input = document.getElementById("username");
+                    if (input) {
+                        input.focus();
+                    }
+                }, 0);
+            }
+
+            function handleLoginSubmit(event) {
+                event.preventDefault();
+                login();
+            }
+
+            async function login() {
+                const username = document
+                    .getElementById("username")
+                    .value.trim();
+                const password = document.getElementById("password").value;
+                try {
+                    const data = await apiRequest("/api/login", "POST", {
+                        username,
+                        password,
+                    });
+                    if (data.code === 0) {
+                        showMainContent();
+                    } else {
+                        alert(getText("login_failed") + data.msg);
+                    }
+                } catch (error) {}
+            }
+
+            async function logout() {
+                try {
+                    await apiRequest("/api/logout", "POST", {});
+                } catch (error) {}
+                showLoginForm();
+            }
+
+            function playerSortValue(player, key) {
+                switch (key) {
+                    case "id":
+                        return player.id;
+                    case "remark":
+                        return player.remark;
+                    case "key":
+                        return player.key;
+                    case "online":
+                        return !!player.online;
+                    default:
+                        return player.id;
+                }
+            }
+
+            function tunnelSortValue(tunnel, key) {
+                switch (key) {
+                    case "receiver":
+                        return tunnel.receiver;
+                    case "source":
+                        return tunnel.source;
+                    case "sender":
+                        return tunnel.sender;
+                    case "endpoint":
+                        return tunnel.endpoint;
+                    case "tunnel_type":
+                        return tunnel.tunnel_type;
+                    case "enabled":
+                        return !!tunnel.enabled;
+                    case "is_compressed":
+                        return !!tunnel.is_compressed;
+                    case "description":
+                        return tunnel.description;
+                    default:
+                        return tunnel.id;
+                }
+            }
+
+            function togglePlayerSort(key) {
+                updateSort(playerSort, key);
+                renderPlayers();
+            }
+
+            function toggleTunnelSort(key) {
+                updateSort(tunnelSort, key);
+                renderTunnels();
+            }
+
+            function renderPlayers() {
+                const table = document.getElementById("playerTable");
+                table.innerHTML = `<tr>
+                    ${renderSortableHeader("id", playerSort, "id", "togglePlayerSort")}
+                    ${renderSortableHeader("player_remark", playerSort, "remark", "togglePlayerSort")}
+                    ${renderSortableHeader("player_key", playerSort, "key", "togglePlayerSort")}
+                    ${renderSortableHeader("online_status", playerSort, "online", "togglePlayerSort")}
+                    <th data-i18n="actions">${getText("actions")}</th>
+                </tr>`;
+
+                const keyword = document
+                    .getElementById("playerSearch")
+                    .value.trim()
+                    .toLowerCase();
+                const filtered = playersData.filter((player) => {
+                    if (keyword === "") {
+                        return true;
+                    }
+                    return String(player.remark ?? "")
+                        .toLowerCase()
+                        .includes(keyword);
+                });
+                const players = sortCollection(
+                    filtered,
+                    playerSort,
+                    playerSortValue,
+                );
+
+                if (players.length === 0) {
+                    table.innerHTML += renderEmptyState(5, "empty_players");
+                    return;
+                }
+
+                players.forEach((player) => {
+                    const row = table.insertRow();
+                    const payload = encodePayload(player);
+                    const isOnline = !!player.online;
+                    row.innerHTML = `
+                        <td data-label="${getText("id")}">${escapeHTML(
+                            player.id,
+                        )}</td>
+                        <td data-label="${getText("player_remark")}">
+                            <span class="cell-ellipsis">${formatPlainValue(
+                                player.remark,
+                            )}</span>
+                        </td>
+                        <td data-label="${getText("player_key")}">
+                            <span class="cell-ellipsis">${formatPlainValue(
+                                player.key,
+                            )}</span>
+                        </td>
+                        <td data-label="${getText("online_status")}">${renderOnlineBadge(
+                            !!player.online,
+                        )}</td>
+                        <td data-label="${getText("actions")}">
+                            <div class="action-buttons compact-actions">
+                                ${renderActionButton(
+                                    "btn-primary",
+                                    getText("edit_player"),
+                                    `showEditPlayerModalFromPayload('${payload}')`,
+                                    "edit",
+                                )}
+                                ${renderActionButton(
+                                    "btn-danger",
+                                    isOnline
+                                        ? getText(
+                                              "online_player_delete_forbidden",
+                                          )
+                                        : getText("delete_button"),
+                                    `removePlayer(${escapeHTML(player.id)})`,
+                                    "delete",
+                                    isOnline,
+                                )}
+                            </div>
+                        </td>`;
+                });
+            }
+
+            async function loadPlayers() {
+                try {
+                    const data = await apiRequest("/api/player_list", "POST", {
+                        page_number: 0,
+                        page_size: 0,
+                    });
+                    playersData = Array.isArray(data.players)
+                        ? data.players
+                        : [];
+                    if (currentEditingPlayerId !== null) {
+                        setEditPlayerKeyLocked(
+                            isPlayerOnline(currentEditingPlayerId),
+                        );
+                    }
+                    renderPlayers();
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            function getTunnelSearchKeyword() {
+                const input = document.getElementById("tunnelPlayerIdSearch");
+                return input ? input.value.trim() : "";
+            }
+
+            function renderTunnels() {
+                const table = document.getElementById("tunnelTable");
+                table.innerHTML = `<tr>
+                    ${renderSortableHeader("receiver_id", tunnelSort, "receiver", "toggleTunnelSort")}
+                    ${renderSortableHeader("source", tunnelSort, "source", "toggleTunnelSort")}
+                    ${renderSortableHeader("sender_id", tunnelSort, "sender", "toggleTunnelSort")}
+                    ${renderSortableHeader("target_tab_title", tunnelSort, "endpoint", "toggleTunnelSort")}
+                    ${renderSortableHeader("protocol_type", tunnelSort, "tunnel_type", "toggleTunnelSort")}
+                    ${renderSortableHeader("status", tunnelSort, "enabled", "toggleTunnelSort")}
+                    ${renderSortableHeader("description", tunnelSort, "description", "toggleTunnelSort")}
+                    <th data-i18n="actions">${getText("actions")}</th>
+                </tr>`;
+
+                const keyword = getTunnelSearchKeyword().toLowerCase();
+                const numericPlayerID =
+                    keyword !== "" && /^\d+$/.test(keyword)
+                        ? Number.parseInt(keyword, 10)
+                        : null;
+                const filtered = tunnelsData.filter((tunnel) => {
+                    if (keyword === "") {
+                        return true;
+                    }
+                    const description = String(tunnel.description ?? "")
+                        .toLowerCase()
+                        .trim();
+                    const matchesPlayerID =
+                        numericPlayerID !== null &&
+                        (Number(tunnel.sender) === numericPlayerID ||
+                            Number(tunnel.receiver) === numericPlayerID);
+                    return matchesPlayerID || description.includes(keyword);
+                });
+                const tunnels = sortCollection(
+                    filtered,
+                    tunnelSort,
+                    tunnelSortValue,
+                );
+                if (tunnels.length === 0) {
+                    table.innerHTML += renderEmptyState(8, "empty_tunnels");
+                    return;
+                }
+
+                tunnels.forEach((tunnel) => {
+                    const row = table.insertRow();
+                    const payload = encodePayload(tunnel);
+                    const ingressText =
+                        tunnel.receiver === 0
+                            ? getText("server_side")
+                            : String(tunnel.receiver);
+                    const egressText =
+                        tunnel.sender === 0
+                            ? getText("server_side")
+                            : String(tunnel.sender);
+                    row.innerHTML = `
+                        <td data-label="${getText("receiver_id")}">
+                            <span class="id-chip">${escapeHTML(ingressText)}</span>
+                        </td>
+                        <td data-label="${getText("source")}">
+                            <span class="cell-ellipsis mono">${formatPlainValue(
+                                tunnel.source,
+                            )}</span>
+                        </td>
+                        <td data-label="${getText("sender_id")}">
+                            <span class="id-chip">${escapeHTML(egressText)}</span>
+                        </td>
+                        <td data-label="${getText("target_tab_title")}">
+                            <span class="cell-ellipsis mono">${formatPlainValue(
+                                tunnel.endpoint,
+                            )}</span>
+                        </td>
+                        <td data-label="${getText("protocol_type")}">${renderProtocolChip(
+                            tunnel.tunnel_type,
+                        )}</td>
+                        <td data-label="${getText("status")}">${renderStatusBadge(
+                            !!tunnel.enabled,
+                            "enabled",
+                            "disabled",
+                        )}</td>
+                        <td data-label="${getText("description")}">
+                            <span class="cell-ellipsis">${formatPlainValue(
+                                tunnel.description,
+                            )}</span>
+                        </td>
+                        <td data-label="${getText("actions")}">
+                            <div class="action-buttons">
+                                ${renderActionButton(
+                                    "btn-primary",
+                                    getText("edit_tunnel"),
+                                    `showEditTunnelModalFromPayload('${payload}')`,
+                                    "edit",
+                                )}
+                                ${renderActionButton(
+                                    "btn-danger",
+                                    getText("delete_button"),
+                                    `removeTunnel(${escapeHTML(tunnel.id)})`,
+                                    "delete",
+                                )}
+                                ${renderActionButton(
+                                    tunnel.enabled ? "btn-warning" : "btn-success",
+                                    getText(
+                                        tunnel.enabled ? "disabled" : "enabled",
+                                    ),
+                                    `toggleTunnelStatus(${escapeHTML(
+                                        tunnel.id,
+                                    )}, ${!!tunnel.enabled})`,
+                                    tunnel.enabled ? "disable" : "enable",
+                                )}
+                            </div>
+                        </td>`;
+                });
+            }
+
+            async function loadTunnels() {
+                try {
+                    const data = await apiRequest("/api/tunnel_list", "POST", {
+                        page_number: 0,
+                        page_size: 0,
+                    });
+                    tunnelsData = Array.isArray(data.tunnels)
+                        ? data.tunnels
+                        : [];
+                    renderTunnels();
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            function handleSearchKeyPress(event, type) {
+                if (event.key !== "Enter") {
+                    return;
+                }
+                event.preventDefault();
+                if (type === "player") {
+                    searchPlayers();
+                } else if (type === "tunnel") {
+                    renderTunnels();
+                }
+            }
+
+            function searchPlayers() {
+                renderPlayers();
+            }
+
+            function schedulePlayerSearch() {
+                clearTimeout(playerSearchTimer);
+                playerSearchTimer = setTimeout(() => {
+                    renderPlayers();
+                }, 180);
+            }
+
+            function scheduleTunnelSearch() {
+                clearTimeout(tunnelSearchTimer);
+                tunnelSearchTimer = setTimeout(() => {
+                    renderTunnels();
+                }, 180);
+            }
+
+            function parseTunnelNumber(id) {
+                const value = Number.parseInt(
+                    document.getElementById(id).value.trim(),
+                    10,
+                );
+                return Number.isNaN(value) ? 0 : value;
+            }
+
+            function readTunnelForm(prefix) {
+                const tunnelType = Number.parseInt(
+                    document.getElementById(prefix + "TunnelType").value,
+                    10,
+                );
+                const usesDynamicTarget = isDynamicTargetTunnelType(tunnelType);
+                const usesUsername = isUsernameTunnelType(tunnelType);
+                const usesPassword = isPasswordTunnelType(tunnelType);
+                const encryptionValue = document.getElementById(
+                    prefix + "TunnelEncryption",
+                ).value;
+                return {
+                    source: document
+                        .getElementById(prefix + "TunnelSource")
+                        .value.trim(),
+                    endpoint: usesDynamicTarget
+                        ? ""
+                        : document
+                              .getElementById(prefix + "TunnelEndpoint")
+                              .value.trim(),
+                    enabled: 1,
+                    sender: parseTunnelNumber(prefix + "TunnelSender"),
+                    receiver: parseTunnelNumber(prefix + "TunnelReceiver"),
+                    description: document
+                        .getElementById(prefix + "TunnelDescription")
+                        .value.trim(),
+                    tunnel_type: Number.isNaN(tunnelType) ? 0 : tunnelType,
+                    password: usesPassword
+                        ? document
+                              .getElementById(prefix + "TunnelPassword")
+                              .value.trim()
+                        : "",
+                    username: usesUsername
+                        ? document
+                              .getElementById(prefix + "TunnelUsername")
+                              .value.trim()
+                        : "",
+                    is_compressed: document.getElementById(
+                        prefix + "TunnelCompressed",
+                    ).checked
+                        ? 1
+                        : 0,
+                    encryption_method: encryptionValue ||
+                        (isShadowsocksTunnelType(tunnelType)
+                            ? defaultShadowsocksMethod
+                            : "None"),
+                    custom_mapping: {},
+                };
+            }
+
+            function validateTunnelForm(prefix) {
+                const tunnelType = Number.parseInt(
+                    document.getElementById(prefix + "TunnelType").value,
+                    10,
+                );
+                const passwordInput = document.getElementById(
+                    prefix + "TunnelPassword",
+                );
+                if (
+                    isShadowsocksTunnelType(tunnelType) &&
+                    passwordInput.value.trim() === ""
+                ) {
+                    alert(getText("shadowsocks_password_required"));
+                    passwordInput.focus();
+                    return false;
+                }
+                return true;
+            }
+
+            function showAddPlayerModal() {
+                document.getElementById("newPlayerRemark").value = "";
+                document.getElementById("newPlayerKey").value = "";
+                document.getElementById("addPlayerModal").style.display =
+                    "block";
+            }
+
+            function setEditPlayerKeyLocked(locked) {
+                const keyInput = document.getElementById("editPlayerKey");
+                const generateButton = document.querySelector(
+                    "#editPlayerModal [data-generate-key-button]",
+                );
+                const hint = document.getElementById("editPlayerKeyHint");
+                if (!keyInput || !generateButton || !hint) {
+                    return;
+                }
+                keyInput.readOnly = locked;
+                generateButton.disabled = locked;
+                hint.style.display = locked ? "block" : "none";
+            }
+
+            function showEditPlayerModal(id, remark, key, online = false) {
+                currentEditingPlayerId = id;
+                document.getElementById("editPlayerRemark").value =
+                    remark || "";
+                document.getElementById("editPlayerKey").value = key || "";
+                setEditPlayerKeyLocked(!!online);
+                document.getElementById("editPlayerModal").style.display =
+                    "block";
+            }
+
+            function showEditPlayerModalFromPayload(payload) {
+                const player = decodePayload(payload);
+                if (!player) {
+                    return;
+                }
+                showEditPlayerModal(
+                    player.id,
+                    player.remark,
+                    player.key,
+                    !!player.online,
+                );
+            }
+
+            function resetTunnelForm(prefix) {
+                document.getElementById(prefix + "TunnelType").value = "0";
+                document.getElementById(prefix + "TunnelSource").value = "";
+                document.getElementById(prefix + "TunnelEndpoint").value = "";
+                document.getElementById(prefix + "TunnelSender").value = "0";
+                document.getElementById(prefix + "TunnelReceiver").value = "0";
+                document.getElementById(prefix + "TunnelDescription").value =
+                    "";
+                document.getElementById(prefix + "TunnelPassword").value = "";
+                document.getElementById(prefix + "TunnelUsername").value = "";
+                document.getElementById(prefix + "TunnelCompressed").checked =
+                    true;
+                toggleTunnelTypeFields(prefix, "None");
+            }
+
+            function showAddTunnelModal() {
+                resetTunnelForm("new");
+                document.getElementById("addTunnelModal").style.display =
+                    "block";
+            }
+
+            function showEditTunnelModal(tunnel) {
+                currentEditingTunnelId = tunnel.id;
+                document.getElementById("editTunnelSource").value =
+                    tunnel.source || "";
+                document.getElementById("editTunnelEndpoint").value =
+                    tunnel.endpoint || "";
+                document.getElementById("editTunnelSender").value =
+                    tunnel.sender ?? 0;
+                document.getElementById("editTunnelReceiver").value =
+                    tunnel.receiver ?? 0;
+                document.getElementById("editTunnelDescription").value =
+                    tunnel.description || "";
+                document.getElementById("editTunnelType").value = String(
+                    tunnel.tunnel_type ?? 0,
+                );
+                document.getElementById("editTunnelPassword").value =
+                    tunnel.password || "";
+                setEditTunnelPasswordVisibility(false);
+                document.getElementById("editTunnelUsername").value =
+                    tunnel.username || "";
+                document.getElementById("editTunnelCompressed").checked =
+                    !!tunnel.is_compressed;
+                toggleTunnelTypeFields(
+                    "edit",
+                    tunnel.encryption_method ||
+                        (isShadowsocksTunnelType(tunnel.tunnel_type ?? 0)
+                            ? defaultShadowsocksMethod
+                            : "None"),
+                );
+                document.getElementById("editTunnelModal").style.display =
+                    "block";
+            }
+
+            function showEditTunnelModalFromPayload(payload) {
+                const tunnel = decodePayload(payload);
+                if (!tunnel) {
+                    return;
+                }
+                showEditTunnelModal(tunnel);
+            }
+
+            function closeModal(modalId) {
+                document.getElementById(modalId).style.display = "none";
+                if (modalId === "editPlayerModal") {
+                    currentEditingPlayerId = null;
+                    setEditPlayerKeyLocked(false);
+                }
+                if (modalId === "editTunnelModal") {
+                    setEditTunnelPasswordVisibility(false);
+                }
+            }
+
+            async function addPlayer() {
+                const remark = document
+                    .getElementById("newPlayerRemark")
+                    .value.trim();
+                const key = document.getElementById("newPlayerKey").value.trim();
+                try {
+                    const data = await apiRequest("/api/add_player", "POST", {
+                        remark,
+                        key,
+                    });
+                    if (data.code === 0) {
+                        closeModal("addPlayerModal");
+                        loadPlayers();
+                    } else {
+                        alert(getText("add_player_failed") + data.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            async function updatePlayer() {
+                const id = currentEditingPlayerId;
+                const remark = document
+                    .getElementById("editPlayerRemark")
+                    .value.trim();
+                const key = document.getElementById("editPlayerKey").value.trim();
+                const player = getPlayerById(id);
+                if (player && !!player.online && key !== String(player.key ?? "").trim()) {
+                    alert(getText("online_player_key_locked"));
+                    return;
+                }
+                try {
+                    const data = await apiRequest(
+                        "/api/update_player",
+                        "POST",
+                        {
+                            id,
+                            remark,
+                            key,
+                        },
+                    );
+                    if (data.code === 0) {
+                        closeModal("editPlayerModal");
+                        loadPlayers();
+                    } else {
+                        alert(getText("update_player_failed") + data.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            async function removePlayer(id) {
+                if (isPlayerOnline(id)) {
+                    alert(getText("online_player_delete_forbidden"));
+                    return;
+                }
+                if (!confirm(getText("confirm_delete_player"))) {
+                    return;
+                }
+                try {
+                    const data = await apiRequest(
+                        "/api/remove_player",
+                        "POST",
+                        {
+                            id,
+                        },
+                    );
+                    if (data.code === 0) {
+                        loadPlayers();
+                    } else {
+                        alert(getText("delete_player_failed") + data.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            async function addTunnel() {
+                if (!validateTunnelForm("new")) {
+                    return;
+                }
+                try {
+                    const data = await apiRequest(
+                        "/api/add_tunnel",
+                        "POST",
+                        readTunnelForm("new"),
+                    );
+                    if (data.code === 0) {
+                        closeModal("addTunnelModal");
+                        loadTunnels();
+                    } else {
+                        alert(getText("add_tunnel_failed") + data.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            async function updateTunnel() {
+                if (!validateTunnelForm("edit")) {
+                    return;
+                }
+                try {
+                    const data = await apiRequest(
+                        "/api/update_tunnel",
+                        "POST",
+                        {
+                            id: currentEditingTunnelId,
+                            ...readTunnelForm("edit"),
+                        },
+                    );
+                    if (data.code === 0) {
+                        closeModal("editTunnelModal");
+                        loadTunnels();
+                    } else {
+                        alert(getText("update_tunnel_failed") + data.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            async function removeTunnel(id) {
+                if (!confirm(getText("confirm_delete_tunnel"))) {
+                    return;
+                }
+                try {
+                    const data = await apiRequest(
+                        "/api/remove_tunnel",
+                        "POST",
+                        {
+                            id,
+                        },
+                    );
+                    if (data.code === 0) {
+                        loadTunnels();
+                    } else {
+                        alert(getText("delete_tunnel_failed") + data.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            function openTab(evt, tabName) {
+                const tabcontent =
+                    document.getElementsByClassName("tabcontent");
+                for (let i = 0; i < tabcontent.length; i++) {
+                    tabcontent[i].style.display = "none";
+                }
+                const tablinks = document.getElementsByClassName("tablinks");
+                for (let i = 0; i < tablinks.length; i++) {
+                    tablinks[i].className = tablinks[i].className.replace(
+                        " active",
+                        "",
+                    );
+                }
+                const playerToolbar = document.getElementById("playerToolbar");
+                const tunnelToolbar = document.getElementById("tunnelToolbar");
+                if (playerToolbar && tunnelToolbar) {
+                    playerToolbar.style.display =
+                        tabName === "Players" ? "flex" : "none";
+                    tunnelToolbar.style.display =
+                        tabName === "Tunnels" ? "flex" : "none";
+                }
+                document.getElementById(tabName).style.display = "block";
+                evt.currentTarget.className += " active";
+            }
+
+            function toggleTunnelTypeFields(prefix, selectedEncryption = null) {
+                const type = Number.parseInt(
+                    document.getElementById(
+                        prefix + "TunnelType",
+                    ).value,
+                    10,
+                );
+                const tunnelType = Number.isNaN(type) ? 0 : type;
+                const typeInput = document.getElementById(
+                    prefix + "TunnelType",
+                );
+                const endpointGroup = document.getElementById(
+                    prefix + "TunnelEndpointGroup",
+                );
+                const usernameGroup = document.getElementById(
+                    prefix + "TunnelUsernameGroup",
+                );
+                const passwordGroup = document.getElementById(
+                    prefix + "TunnelPasswordGroup",
+                );
+                const endpointInput = document.getElementById(
+                    prefix + "TunnelEndpoint",
+                );
+                const usernameInput = document.getElementById(
+                    prefix + "TunnelUsername",
+                );
+                const passwordInput = document.getElementById(
+                    prefix + "TunnelPassword",
+                );
+                const usesDynamicTarget = isDynamicTargetTunnelType(tunnelType);
+                const usesUsername = isUsernameTunnelType(tunnelType);
+                const usesPassword = isPasswordTunnelType(tunnelType);
+
+                if (typeInput) {
+                    syncTunnelEncryptionOptions(
+                        prefix,
+                        tunnelType,
+                        selectedEncryption,
+                    );
+                }
+
+                endpointGroup.style.display = usesDynamicTarget ? "none" : "flex";
+                usernameGroup.style.display = usesUsername ? "flex" : "none";
+                passwordGroup.style.display = usesPassword ? "flex" : "none";
+                if (usesDynamicTarget) {
+                    endpointInput.value = "";
+                }
+                if (!usesUsername) {
+                    usernameInput.value = "";
+                }
+                if (!usesPassword) {
+                    passwordInput.value = "";
+                }
+                passwordInput.required = isShadowsocksTunnelType(tunnelType);
+            }
+
+            async function toggleTunnelStatus(id, currentStatus) {
+                try {
+                    const data = await apiRequest("/api/tunnel_list", "POST", {
+                        page_number: 0,
+                        page_size: 0,
+                    });
+                    const tunnel = Array.isArray(data.tunnels)
+                        ? data.tunnels.find((item) => item.id === id)
+                        : null;
+                    if (!tunnel) {
+                        throw new Error(getText("tunnel_not_found"));
+                    }
+                    tunnel.enabled = !currentStatus ? 1 : 0;
+                    tunnel.is_compressed = tunnel.is_compressed ? 1 : 0;
+                    const result = await apiRequest(
+                        "/api/update_tunnel",
+                        "POST",
+                        tunnel,
+                    );
+                    if (result.code === 0) {
+                        loadTunnels();
+                    } else {
+                        alert(getText("update_tunnel_failed") + result.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        </script>
+    </body>
+</html>

@@ -1,0 +1,16 @@
+package model
+
+import "time"
+
+type User struct {
+	ID         uint32    `json:"id"`
+	Remark     string    `json:"remark"`
+	Key        string    `json:"key"`
+	CreateTime time.Time `json:"create_time"`
+}
+
+type PlayerUpdate struct {
+	ID     uint32
+	Remark string
+	Key    string
+}
