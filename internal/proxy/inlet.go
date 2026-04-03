@@ -4,14 +4,16 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 const (
-	sessionReadyTimeout = 10 * time.Second
-	udpSessionIdleTTL   = 10 * time.Second
+	sessionReadyTimeout               = 10 * time.Second
+	udpSessionIdleTTL                 = 10 * time.Second
+	shadowsocksAuthFailureLogInterval = 5 * time.Second
 )
 
 type inletSession struct {
@@ -50,22 +52,26 @@ type Inlet struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 	runWG    sync.WaitGroup
+
+	authFailMu    sync.Mutex
+	authFailLogAt map[string]time.Time
 }
 
 func NewInlet(logger *log.Logger, tunnelID uint32, mode TunnelMode, listenAddr, outputAddr string, common *SessionCommonInfo, authData InletAuthData, output OutputFunc, description string) *Inlet {
 	return &Inlet{
-		logger:      logger,
-		tunnelID:    tunnelID,
-		mode:        mode,
-		listenAddr:  listenAddr,
-		outputAddr:  outputAddr,
-		authData:    authData,
-		output:      output,
-		common:      common,
-		description: description,
-		sessions:    map[uint32]*inletSession{},
-		udpPeers:    map[string]uint32{},
-		stopCh:      make(chan struct{}),
+		logger:        logger,
+		tunnelID:      tunnelID,
+		mode:          mode,
+		listenAddr:    listenAddr,
+		outputAddr:    outputAddr,
+		authData:      authData,
+		output:        output,
+		common:        common,
+		description:   description,
+		sessions:      map[uint32]*inletSession{},
+		udpPeers:      map[string]uint32{},
+		stopCh:        make(chan struct{}),
+		authFailLogAt: map[string]time.Time{},
 	}
 }
 
@@ -256,9 +262,7 @@ func (i *Inlet) runTCPConn(conn net.Conn) {
 			return
 		}
 		if err := session.handlePeerData(append([]byte(nil), buf[:n]...)); err != nil {
-			if !isExpectedNetCloseError(err) {
-				i.logger.Printf("入口读取处理失败: %v", err)
-			}
+			i.logPeerDataError(peer.String(), "TCP", err)
 			i.closeSession(sessionID)
 			return
 		}
@@ -371,9 +375,7 @@ func (i *Inlet) runUDPSession(session *inletSession) {
 			return
 		}
 		if err := session.handlePeerData(payload); err != nil {
-			if !isExpectedNetCloseError(err) {
-				i.logger.Printf("入口 UDP 处理失败: %v", err)
-			}
+			i.logPeerDataError(session.peerKey, "UDP", err)
 			i.closeSession(session.id)
 			return
 		}
@@ -517,6 +519,61 @@ func (s *inletSession) shutdown(logger *log.Logger) {
 			return nil
 		})
 	})
+}
+
+func (i *Inlet) logPeerDataError(peer, network string, err error) {
+	if isExpectedNetCloseError(err) {
+		return
+	}
+	if i.mode == TunnelModeShadowsocks && isShadowsocksAuthFailure(err) {
+		if !i.shouldLogShadowsocksAuthFailure(peer) {
+			return
+		}
+		method := i.authData.Method
+		if method == "" {
+			method = DefaultShadowsocksMethod
+		}
+		i.logger.Printf(
+			"Shadowsocks 入口解密失败: tunnel=%d network=%s peer=%s method=%s err=%v; 请确认客户端使用的是 Shadowsocks 协议，且密码/加密方式一致",
+			i.tunnelID,
+			network,
+			peer,
+			method,
+			err,
+		)
+		return
+	}
+	if network == "UDP" {
+		i.logger.Printf("入口 UDP 处理失败: %v", err)
+		return
+	}
+	i.logger.Printf("入口读取处理失败: %v", err)
+}
+
+func (i *Inlet) shouldLogShadowsocksAuthFailure(peer string) bool {
+	now := time.Now()
+
+	i.authFailMu.Lock()
+	defer i.authFailMu.Unlock()
+
+	for key, last := range i.authFailLogAt {
+		if now.Sub(last) > time.Minute {
+			delete(i.authFailLogAt, key)
+		}
+	}
+
+	if last, ok := i.authFailLogAt[peer]; ok && now.Sub(last) < shadowsocksAuthFailureLogInterval {
+		return false
+	}
+	i.authFailLogAt[peer] = now
+	return true
+}
+
+func isShadowsocksAuthFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "message authentication failed")
 }
 
 func (s *inletSession) markReadyLocked() {
