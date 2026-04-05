@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
 
-	gclient "github.com/pizixi/gpipe/internal/client"
-	"github.com/pizixi/gpipe/internal/logx"
+	gclient "github.com/pizixi/gpipe/client"
 )
 
 func main() {
@@ -16,14 +16,13 @@ func main() {
 
 	var (
 		backtrace     = false
-		server        = "ws://127.0.0.1:8119"
-		key           = "demo"
+		server        = "tcp://127.0.0.1:8117"
+		key           = "demo" // 调整每个客户端的key
 		enableTLS     = false
 		tlsServerName = ""
 		insecure      = false
 		caCert        = ""
 		quiet         = false
-		logDir        = "logs"
 
 		ssServer   = "127.0.0.1:8388"
 		ssMethod   = "chacha20-ietf-poly1305"
@@ -36,11 +35,11 @@ func main() {
 		}
 	}
 
-	logger, closer, err := logx.New(quiet, logDir, "client-demo")
-	if err != nil {
-		log.Fatal(err)
+	loggerOutput := io.Writer(os.Stdout)
+	if quiet {
+		loggerOutput = io.Discard
 	}
-	defer closer.Close()
+	logger := log.New(loggerOutput, "", log.LstdFlags|log.Lshortfile)
 
 	dial, err := buildDemoDial(server, ssServer, ssMethod, ssPassword)
 	if err != nil {

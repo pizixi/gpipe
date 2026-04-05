@@ -1600,7 +1600,7 @@
             }
 
             .tunnel-field-wide {
-                grid-column: span 5;
+                grid-column: span 6;
             }
 
             .tunnel-field-compact {
@@ -2238,20 +2238,6 @@
                                 <option value="Xor" data-i18n="xor">Xor</option>
                             </select>
                         </div>
-                        <div
-                            class="form-group checkbox-card tunnel-field-compact"
-                        >
-                            <label
-                                for="newTunnelCompressed"
-                                data-i18n="enable_compression"
-                                >启用压缩：</label
-                            >
-                            <input
-                                type="checkbox"
-                                id="newTunnelCompressed"
-                                checked
-                            />
-                        </div>
                         <div class="form-group tunnel-field-half">
                             <label
                                 for="newTunnelReceiver"
@@ -2336,7 +2322,7 @@
                                 placeholder="密码"
                             />
                         </div>
-                        <div class="form-group form-span-2">
+                        <div class="form-group tunnel-field-half">
                             <label
                                 for="newTunnelDescription"
                                 data-i18n="description"
@@ -2347,6 +2333,18 @@
                                 id="newTunnelDescription"
                                 data-i18n-placeholder="description_placeholder"
                                 placeholder="描述"
+                            />
+                        </div>
+                        <div class="form-group checkbox-card tunnel-field-half">
+                            <label
+                                for="newTunnelCompressed"
+                                data-i18n="enable_compression"
+                                >启用压缩：</label
+                            >
+                            <input
+                                type="checkbox"
+                                id="newTunnelCompressed"
+                                checked
                             />
                         </div>
                     </div>
@@ -2414,16 +2412,6 @@
                                 </option>
                                 <option value="Xor" data-i18n="xor">Xor</option>
                             </select>
-                        </div>
-                        <div
-                            class="form-group checkbox-card tunnel-field-compact"
-                        >
-                            <label
-                                for="editTunnelCompressed"
-                                data-i18n="enable_compression"
-                                >启用压缩：</label
-                            >
-                            <input type="checkbox" id="editTunnelCompressed" />
                         </div>
                         <div class="form-group tunnel-field-half">
                             <label
@@ -2532,7 +2520,7 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="form-group form-span-2">
+                        <div class="form-group tunnel-field-half">
                             <label
                                 for="editTunnelDescription"
                                 data-i18n="description"
@@ -2544,6 +2532,14 @@
                                 data-i18n-placeholder="description_placeholder"
                                 placeholder="描述"
                             />
+                        </div>
+                        <div class="form-group checkbox-card tunnel-field-half">
+                            <label
+                                for="editTunnelCompressed"
+                                data-i18n="enable_compression"
+                                >启用压缩：</label
+                            >
+                            <input type="checkbox" id="editTunnelCompressed" />
                         </div>
                     </div>
 

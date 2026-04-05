@@ -8,6 +8,7 @@
 
 - `cmd/server`：服务端入口
 - `cmd/client`：客户端入口
+- `client`：对第三方 Go 程序公开的客户端调用包
 - `internal/client`：客户端主循环、登录、心跳、隧道同步
 - `internal/server`：服务端主逻辑、连接管理、协议处理
 - `internal/proxy`：代理入口、出口、数据转发、加密与压缩
@@ -160,6 +161,53 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
 
 ```powershell
 .\bin\gpipe-client.exe run --server ws://127.0.0.1:8119 --key demo --ss-server 127.0.0.1:8388 --ss-method chacha20-ietf-poly1305 --ss-password your-password
+```
+
+## 作为 Go 包直接调用客户端
+
+如果你要在第三方 Go 程序里直接嵌入客户端，不要导入 `internal/client`，请改用公开包 `github.com/pizixi/gpipe/client`。
+
+最小示例：
+
+```go
+package main
+
+import (
+  "context"
+  "log"
+  "os"
+  "os/signal"
+
+  gclient "github.com/pizixi/gpipe/client"
+)
+
+func main() {
+  ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+  defer stop()
+
+  logger := log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
+
+  if err := gclient.RunContext(ctx, gclient.Options{
+    Server: "tcp://127.0.0.1:8118",
+    Key:    "demo",
+    Logger: logger,
+  }); err != nil {
+    log.Fatal(err)
+  }
+}
+```
+
+如果需要通过 Shadowsocks 连接服务端，可以直接复用公开包里的拨号辅助：
+
+```go
+dial, err := gclient.NewShadowsocksDialFunc(gclient.SSDialConfig{
+  ServerAddr: "127.0.0.1:8388",
+  Method:     "chacha20-ietf-poly1305",
+  Password:   "your-password",
+})
+if err != nil {
+  log.Fatal(err)
+}
 ```
 
 ## TLS 作用范围
