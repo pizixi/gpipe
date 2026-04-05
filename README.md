@@ -9,6 +9,7 @@
 - `cmd/server`：服务端入口
 - `cmd/client`：客户端入口
 - `client`：对第三方 Go 程序公开的客户端调用包
+- `examples/third_party_go_client`：独立第三方 Go 模块调用客户端的示例，支持源码变量形式的可选 Shadowsocks 出站
 - `internal/client`：客户端主循环、登录、心跳、隧道同步
 - `internal/server`：服务端主逻辑、连接管理、协议处理
 - `internal/proxy`：代理入口、出口、数据转发、加密与压缩
@@ -166,6 +167,11 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
 ## 作为 Go 包直接调用客户端
 
 如果你要在第三方 Go 程序里直接嵌入客户端，不要导入 `internal/client`，请改用公开包 `github.com/pizixi/gpipe/client`。
+
+完整示例可参考：
+
+- `examples/third_party_go_client`：独立第三方模块示例，包含自己的 `go.mod`，并支持通过源码变量启用 Shadowsocks 出站
+- `examples/client_direct_demo.go`：仓库内直接运行的完整示例，包含可选 Shadowsocks 出站拨号
 
 最小示例：
 
