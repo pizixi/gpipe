@@ -1,0 +1,80 @@
+{{define "modals/add_player"}}
+            <!-- 添加玩家 Modal -->
+            <div id="addPlayerModal" class="modal">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('addPlayerModal')"
+                        >&times;</span
+                    >
+                    <h2 data-i18n="add_player">添加玩家</h2>
+                    <div class="form-group">
+                        <label for="newPlayerRemark" data-i18n="player_remark"
+                            >备注：</label
+                        >
+                        <input
+                            type="text"
+                            id="newPlayerRemark"
+                            data-i18n-placeholder="enter_remark_placeholder"
+                            placeholder="请输入备注"
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label for="newPlayerKey" data-i18n="player_key"
+                            >密钥：</label
+                        >
+                        <div class="input-with-action">
+                            <input
+                                type="text"
+                                id="newPlayerKey"
+                                data-i18n-placeholder="enter_key_placeholder"
+                                placeholder="请输入密钥"
+                            />
+                            <button
+                                type="button"
+                                class="input-icon-button"
+                                onclick="generatePlayerKey('newPlayerKey')"
+                                data-generate-key-button
+                                aria-label="一键生成"
+                                title="一键生成"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 3v4"></path>
+                                    <path d="M12 17v4"></path>
+                                    <path d="M4.22 4.22l2.83 2.83"></path>
+                                    <path d="M16.95 16.95l2.83 2.83"></path>
+                                    <path d="M3 12h4"></path>
+                                    <path d="M17 12h4"></path>
+                                    <path d="M4.22 19.78l2.83-2.83"></path>
+                                    <path d="M16.95 7.05l2.83-2.83"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button
+                            class="btn btn-secondary"
+                            onclick="closeModal('addPlayerModal')"
+                            data-i18n="cancel_button"
+                        >
+                            取消
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            onclick="addPlayer()"
+                            data-i18n="add_button"
+                        >
+                            添加
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+{{end}}

@@ -18,7 +18,7 @@
 - `internal/db`：SQLite 初始化与迁移
 - `internal/web`：管理后台 HTTP API
 - `scripts/build-release.ps1`：一键生成发布目录
-- `dist/index.html`：默认管理端页面，构建时会打进服务端二进制
+- `webui/`：默认管理端静态资源目录，首页由 Go `html/template` 模板渲染，构建时会整体打进服务端二进制
 - `scripts/build-client-templates.ps1`：预构建客户端下载模板
 - `scripts/smoke.ps1`：本地最小链路验证脚本
 
@@ -75,8 +75,8 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
 
 说明：
 
-- `dist/index.html` 已内置进服务端二进制，发布时不需要再额外携带这个文件
-- 如果设置了 `web_base_dir` 且目录存在，服务端会优先使用磁盘目录中的静态文件，便于本地修改前端后直接查看效果
+- `webui/` 已内置进服务端二进制，发布时不需要再额外携带这个目录
+- 如果设置了 `web_base_dir` 且目录存在，服务端会优先使用磁盘目录中的静态文件；目录里既可以放完整 `index.html`，也可以放 `templates/` 目录让首页走模板渲染
 - `client-templates/` 可通过 `.\scripts\build-client-templates.ps1` 预先构建；服务端下载玩家客户端时会优先使用这些模板，并把玩家密钥和连接参数直接补丁进二进制
 
 纯发布版模板构建示例：
@@ -346,7 +346,7 @@ if err != nil {
 
 - 服务端使用 `.\certs\cert.pem` 和 `.\certs\server.key.pem`
 - 客户端启用 TLS 时不需要再传 `--ca-cert`
-- 如果你希望在本地开发时覆盖内置页面，可以把前端文件放在 `web_base_dir` 指向的目录中
+- 如果你希望在本地开发时覆盖内置页面，可以把前端文件放在 `web_base_dir` 指向的目录中；既支持传统单文件 `index.html`，也支持当前仓库使用的 `templates/` 拆分结构
 
 本地测试示例：
 
@@ -390,7 +390,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1
 
 - 生成临时 `gpipe.json`
 - 启动 Go 服务端
-- 校验在 `web_base_dir=""` 时首页会返回内置 `index.html`
+- 校验在 `web_base_dir=""` 时首页和静态资源会返回内置 `webui/` 内容
 - 通过 Web API 创建测试用户
 - 启动 Go 客户端并验证登录成功
 

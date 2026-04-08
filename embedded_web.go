@@ -1,8 +1,8 @@
 package gpipe
 
-import _ "embed"
+import "embed"
 
-// EmbeddedIndexHTML keeps the default web UI inside the server binary.
+// EmbeddedWebFS keeps the default web UI directory inside the server binary.
 //
-//go:embed dist/index.html
-var EmbeddedIndexHTML []byte
+//go:embed webui
+var EmbeddedWebFS embed.FS

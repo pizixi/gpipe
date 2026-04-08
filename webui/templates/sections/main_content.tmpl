@@ -1,0 +1,316 @@
+{{define "sections/main_content"}}
+            <!-- 主内容 -->
+            <div id="mainContent" style="display: none">
+                <div class="top-controls">
+                    <div class="language-switcher">
+                        <button
+                            class="language-btn"
+                            onclick="changeLanguage('zh')"
+                        >
+                            中文
+                        </button>
+                        <button
+                            class="language-btn"
+                            onclick="changeLanguage('en')"
+                        >
+                            EN
+                        </button>
+                    </div>
+                    <button
+                        class="btn btn-secondary quick-logout"
+                        onclick="logout()"
+                        data-i18n="logout_button"
+                    >
+                        退出登录
+                    </button>
+                </div>
+                <div class="page-header">
+                    <div>
+                        <div class="page-kicker">gpipe control</div>
+                        <h1 data-i18n="console_title">管理控制台</h1>
+                        <p class="page-subtitle" data-i18n="console_subtitle">
+                            统一管理玩家、隧道和客户端参数
+                        </p>
+                    </div>
+                </div>
+
+                <div class="tab-toolbar">
+                    <div class="tab">
+                        <button
+                            class="tablinks"
+                            onclick="openTab(event, 'Players')"
+                            id="defaultOpen"
+                            data-i18n="player_management"
+                        >
+                            玩家管理
+                        </button>
+                        <button
+                            class="tablinks"
+                            onclick="openTab(event, 'Tunnels')"
+                            data-i18n="tunnel_management"
+                        >
+                            隧道管理
+                        </button>
+                        <button
+                            class="tablinks"
+                            onclick="openTab(event, 'Settings')"
+                            data-i18n="client_settings"
+                        >
+                            客户端设置
+                        </button>
+                    </div>
+                    <div id="mainToolbarActions" class="toolbar-actions">
+                        <div id="playerToolbar" class="action-bar">
+                            <div class="search-bar">
+                                <input
+                                    type="text"
+                                    id="playerSearch"
+                                    data-i18n-placeholder="search_player_placeholder"
+                                    placeholder="搜索备注..."
+                                    oninput="schedulePlayerSearch()"
+                                    onkeypress="
+                                        handleSearchKeyPress(event, 'player')
+                                    "
+                                />
+                                <button
+                                    onclick="searchPlayers()"
+                                    data-i18n="search_button"
+                                >
+                                    搜索
+                                </button>
+                            </div>
+                            <button
+                                class="add-button"
+                                onclick="showAddPlayerModal()"
+                                data-i18n="add_player"
+                            >
+                                添加玩家
+                            </button>
+                        </div>
+                        <div
+                            id="tunnelToolbar"
+                            class="action-bar"
+                            style="display: none"
+                        >
+                            <div class="search-bar">
+                                <input
+                                    type="search"
+                                    id="tunnelPlayerIdSearch"
+                                    data-i18n-placeholder="search_tunnel_placeholder"
+                                    placeholder="输入玩家ID或描述关键字"
+                                    oninput="scheduleTunnelSearch()"
+                                    onkeypress="
+                                        handleSearchKeyPress(event, 'tunnel')
+                                    "
+                                    autocomplete="off"
+                                />
+                                <button
+                                    onclick="loadTunnels()"
+                                    data-i18n="search_button"
+                                >
+                                    搜索
+                                </button>
+                            </div>
+                            <button
+                                class="add-button"
+                                onclick="showAddTunnelModal()"
+                                data-i18n="add_tunnel"
+                            >
+                                添加隧道
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="Players" class="tabcontent">
+                    <div class="table-scroll">
+                        <table id="playerTable">
+                            <tr>
+                                <th data-i18n="id">ID</th>
+                                <th data-i18n="player_remark">备注</th>
+                                <th data-i18n="player_key">密钥</th>
+                                <th data-i18n="create_time">创建时间</th>
+                                <th data-i18n="online_status">在线状态</th>
+                                <th data-i18n="actions">操作</th>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="Tunnels" class="tabcontent">
+                    <div class="table-scroll">
+                        <table id="tunnelTable">
+                            <tr>
+                                <th data-i18n="receiver_id">隧道入口ID</th>
+                                <th data-i18n="source">监听地址</th>
+                                <th data-i18n="sender_id">隧道出口ID</th>
+                                <th data-i18n="target_tab_title">目标</th>
+                                <th data-i18n="protocol_type">协议类型</th>
+                                <th data-i18n="status">状态</th>
+                                <th data-i18n="compression_status">压缩</th>
+                                <th data-i18n="description">描述</th>
+                                <th data-i18n="actions">操作</th>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="Settings" class="tabcontent">
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <div>
+                                <div class="page-kicker">client profile</div>
+                                <h2 data-i18n="client_settings_title">
+                                    客户端生成设置
+                                </h2>
+                                <p
+                                    class="page-subtitle"
+                                    data-i18n="client_settings_subtitle"
+                                >
+                                    设置生成客户端时内置的连接参数和 Shadowsocks
+                                    配置。
+                                </p>
+                            </div>
+                            <button
+                                class="btn btn-primary"
+                                type="button"
+                                onclick="saveClientBuildSettings()"
+                                data-i18n="save_settings"
+                            >
+                                保存设置
+                            </button>
+                        </div>
+                        <div class="settings-grid">
+                            <div
+                                class="form-group settings-field settings-field-full"
+                            >
+                                <label
+                                    for="clientServer"
+                                    data-i18n="server_address"
+                                    >服务端地址：</label
+                                >
+                                <input
+                                    type="text"
+                                    id="clientServer"
+                                    data-i18n-placeholder="server_address_placeholder"
+                                    placeholder="例如 tcp://127.0.0.1:8118,ws://127.0.0.1:8119"
+                                />
+                            </div>
+                            <div
+                                class="form-group checkbox-card settings-field"
+                            >
+                                <label
+                                    for="clientEnableTLS"
+                                    data-i18n="enable_tls"
+                                    >启用 TLS：</label
+                                >
+                                <input type="checkbox" id="clientEnableTLS" />
+                            </div>
+                            <div class="form-group settings-field">
+                                <label
+                                    for="clientTLSServerName"
+                                    data-i18n="tls_server_name"
+                                    >TLS Server Name：</label
+                                >
+                                <input
+                                    type="text"
+                                    id="clientTLSServerName"
+                                    data-i18n-placeholder="tls_server_name_placeholder"
+                                    placeholder="可选，留空则自动使用主机名"
+                                />
+                            </div>
+                            <div
+                                class="form-group checkbox-card settings-field"
+                            >
+                                <label
+                                    for="clientUseShadowsocks"
+                                    data-i18n="use_shadowsocks"
+                                    >使用 Shadowsocks：</label
+                                >
+                                <input
+                                    type="checkbox"
+                                    id="clientUseShadowsocks"
+                                    onchange="toggleClientSettingsSSFields()"
+                                />
+                            </div>
+                            <div
+                                class="form-group settings-field"
+                                id="clientSSServerGroup"
+                            >
+                                <label
+                                    for="clientSSServer"
+                                    data-i18n="shadowsocks_server"
+                                    >Shadowsocks 地址：</label
+                                >
+                                <input
+                                    type="text"
+                                    id="clientSSServer"
+                                    data-i18n-placeholder="shadowsocks_server_placeholder"
+                                    placeholder="例如 127.0.0.1:8388"
+                                />
+                            </div>
+                            <div
+                                class="form-group settings-field"
+                                id="clientSSMethodGroup"
+                            >
+                                <label
+                                    for="clientSSMethod"
+                                    data-i18n="shadowsocks_method"
+                                    >Shadowsocks 方法：</label
+                                >
+                                <div class="select-shell">
+                                    <select id="clientSSMethod">
+                                        <option value="chacha20-ietf-poly1305">
+                                            chacha20-ietf-poly1305
+                                        </option>
+                                        <option value="aes-128-gcm">
+                                            aes-128-gcm
+                                        </option>
+                                        <option value="aes-256-gcm">
+                                            aes-256-gcm
+                                        </option>
+                                    </select>
+                                    <span class="select-shell-indicator" aria-hidden="true">
+                                        <svg
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="1.8"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        >
+                                            <path d="m6 9 6 6 6-6"></path>
+                                        </svg>
+                                    </span>
+                                </div>
+                            </div>
+                            <div
+                                class="form-group settings-field"
+                                id="clientSSPasswordGroup"
+                            >
+                                <label
+                                    for="clientSSPassword"
+                                    data-i18n="shadowsocks_password"
+                                    >Shadowsocks 密码：</label
+                                >
+                                <input
+                                    type="password"
+                                    id="clientSSPassword"
+                                    data-i18n-placeholder="shadowsocks_password_placeholder"
+                                    placeholder="请输入 Shadowsocks 密码"
+                                />
+                            </div>
+                        </div>
+                        <div
+                            class="settings-note"
+                            data-i18n="client_download_hint"
+                        >
+                            生成后的客户端会自动内置玩家密钥和当前设置，
+                            直接运行默认前台模式，同时支持 install / uninstall /
+                            run-service 命令。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+{{end}}

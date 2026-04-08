@@ -129,6 +129,23 @@ func TestHandlerServesEmbeddedIndexWhenWebBaseDirIsEmpty(t *testing.T) {
 	}
 }
 
+func TestHandlerServesEmbeddedAssetsWhenWebBaseDirIsEmpty(t *testing.T) {
+	handler := NewService(&config.ServerConfig{}, nil).Handler()
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/scripts/app.js", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "function updateLanguage()") {
+		t.Fatalf("expected embedded app.js response")
+	}
+}
+
 func TestHandlerPrefersDiskStaticFilesWhenWebBaseDirExists(t *testing.T) {
 	dir := t.TempDir()
 	indexPath := filepath.Join(dir, "index.html")
@@ -149,6 +166,56 @@ func TestHandlerPrefersDiskStaticFilesWhenWebBaseDirExists(t *testing.T) {
 	}
 	if body := recorder.Body.String(); !strings.Contains(body, "custom-index") {
 		t.Fatalf("expected disk index html to be served, got %q", body)
+	}
+}
+
+func TestHandlerBuildsIndexFromDiskTemplatesWhenIndexHTMLMissing(t *testing.T) {
+	dir := t.TempDir()
+	templates := map[string]string{
+		"templates/layout/page.tmpl": `{{define "layout/page"}}<!doctype html>
+<html><body>
+{{template "sections/login" .}}
+{{template "sections/main_content" .}}
+{{template "modals/add_player" .}}
+{{template "modals/edit_player" .}}
+{{template "modals/generate_client" .}}
+{{template "modals/add_tunnel" .}}
+{{template "modals/edit_tunnel" .}}
+</body></html>{{end}}`,
+		"templates/sections/login.tmpl":         `{{define "sections/login"}}<section id="login">login</section>{{end}}`,
+		"templates/sections/main_content.tmpl":  `{{define "sections/main_content"}}<main id="main">main</main>{{end}}`,
+		"templates/modals/add_player.tmpl":      `{{define "modals/add_player"}}<div id="add-player"></div>{{end}}`,
+		"templates/modals/edit_player.tmpl":     `{{define "modals/edit_player"}}<div id="edit-player"></div>{{end}}`,
+		"templates/modals/generate_client.tmpl": `{{define "modals/generate_client"}}<div id="generate-client"></div>{{end}}`,
+		"templates/modals/add_tunnel.tmpl":      `{{define "modals/add_tunnel"}}<div id="add-tunnel"></div>{{end}}`,
+		"templates/modals/edit_tunnel.tmpl":     `{{define "modals/edit_tunnel"}}<div id="edit-tunnel"></div>{{end}}`,
+	}
+	for path, content := range templates {
+		fullPath := filepath.Join(dir, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(fullPath), err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", fullPath, err)
+		}
+	}
+
+	handler := NewService(&config.ServerConfig{
+		WebBaseDir: dir,
+	}, nil).Handler()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	body := recorder.Body.String()
+	for _, expected := range []string{"<!doctype html>", "id=\"login\"", "id=\"edit-tunnel\""} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("expected rendered disk template content %q, got %q", expected, body)
+		}
 	}
 }
 

@@ -1,0 +1,88 @@
+{{define "modals/edit_player"}}
+            <!-- 修改玩家 Modal -->
+            <div id="editPlayerModal" class="modal">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('editPlayerModal')"
+                        >&times;</span
+                    >
+                    <h2 data-i18n="edit_player">修改玩家</h2>
+                    <div class="form-group">
+                        <label for="editPlayerRemark" data-i18n="player_remark"
+                            >备注：</label
+                        >
+                        <input
+                            type="text"
+                            id="editPlayerRemark"
+                            data-i18n-placeholder="remark_placeholder"
+                            placeholder="备注"
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label for="editPlayerKey" data-i18n="player_key"
+                            >密钥：</label
+                        >
+                        <div class="input-with-action">
+                            <input
+                                type="text"
+                                id="editPlayerKey"
+                                data-i18n-placeholder="enter_new_key_placeholder"
+                                placeholder="请输入新密钥"
+                            />
+                            <button
+                                type="button"
+                                class="input-icon-button"
+                                onclick="generatePlayerKey('editPlayerKey')"
+                                data-generate-key-button
+                                aria-label="一键生成"
+                                title="一键生成"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="1.8"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 3v4"></path>
+                                    <path d="M12 17v4"></path>
+                                    <path d="M4.22 4.22l2.83 2.83"></path>
+                                    <path d="M16.95 16.95l2.83 2.83"></path>
+                                    <path d="M3 12h4"></path>
+                                    <path d="M17 12h4"></path>
+                                    <path d="M4.22 19.78l2.83-2.83"></path>
+                                    <path d="M16.95 7.05l2.83-2.83"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        id="editPlayerKeyHint"
+                        class="form-hint"
+                        data-i18n="online_player_key_locked_hint"
+                        style="display: none"
+                    >
+                        在线玩家仅允许修改备注，密钥需要离线后再改
+                    </div>
+                    <div class="btn-group">
+                        <button
+                            class="btn btn-secondary"
+                            onclick="closeModal('editPlayerModal')"
+                            data-i18n="cancel_button"
+                        >
+                            取消
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            onclick="updatePlayer()"
+                            data-i18n="update_button"
+                        >
+                            更新
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+{{end}}

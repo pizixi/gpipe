@@ -1,0 +1,59 @@
+            /* ================= 紧凑型数据网格 (表格) ================= */
+            table {
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+                border: 1px solid var(--border-light);
+                border-radius: var(--radius-md);
+                overflow: hidden;
+                margin-top: 0;
+            }
+
+            th,
+            td {
+                text-align: left;
+                padding: 10px 14px; /* 极简的单元格内边距 */
+                border-bottom: 1px solid var(--border-light);
+                font-size: 13px;
+            }
+
+            th {
+                background-color: #f9fafb;
+                font-weight: 500;
+                color: var(--text-secondary);
+                font-size: 12px;
+            }
+
+            tr:last-child td {
+                border-bottom: none;
+            }
+            tr:hover td {
+                background-color: #f8fafc;
+            }
+
+            /* ================= 极简圆点状态标签 ================= */
+            .status-badge {
+                display: inline-flex;
+                align-items: center;
+                font-size: 12px;
+                font-weight: 500;
+                color: var(--text-main);
+            }
+            .status-badge::before {
+                content: "";
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                margin-right: 6px;
+            }
+            .status-badge-online::before,
+            .status-badge-enabled::before {
+                background-color: var(--success);
+                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+            }
+            .status-badge-offline::before,
+            .status-badge-disabled::before {
+                background-color: var(--text-tertiary);
+            }
+

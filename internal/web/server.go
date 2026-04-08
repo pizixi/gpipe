@@ -9,8 +9,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
+	"io/fs"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +29,8 @@ import (
 const authCookieName = "auth-id"
 const authCookieTTL = 60 * time.Minute
 const maxJSONBodyBytes int64 = 1 << 20
+
+const webIndexTemplateName = "layout/page"
 
 type Service struct {
 	cfg          *config.ServerConfig
@@ -71,21 +76,100 @@ func (s *Service) Handler() http.Handler {
 func (s *Service) staticHandler() http.Handler {
 	if s.cfg.WebBaseDir != "" {
 		if stat, err := os.Stat(s.cfg.WebBaseDir); err == nil && stat.IsDir() {
-			return http.FileServer(http.Dir(s.cfg.WebBaseDir))
+			return newWebUIHandler(os.DirFS(s.cfg.WebBaseDir), true)
 		}
 	}
+	subFS, err := fs.Sub(gpipe.EmbeddedWebFS, "webui")
+	if err != nil {
+		return http.NotFoundHandler()
+	}
+	return newWebUIHandler(subFS, false)
+}
+
+func newWebUIHandler(webFS fs.FS, reloadTemplates bool) http.Handler {
+	fileServer := http.FileServer(http.FS(webFS))
+	var cachedTemplate *template.Template
+	var cachedTemplateErr error
+	if !reloadTemplates {
+		cachedTemplate, cachedTemplateErr = parseWebIndexTemplate(webFS)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			http.NotFound(w, r)
-			return
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+				if data, err := fs.ReadFile(webFS, "index.html"); err == nil {
+					w.Header().Set("Content-Type", "text/html; charset=utf-8")
+					http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(data))
+					return
+				}
+				indexHTML, err := renderWebIndexTemplate(webFS, cachedTemplate, cachedTemplateErr, reloadTemplates)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(indexHTML))
+				return
+			}
 		}
-		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(gpipe.EmbeddedIndexHTML))
+		fileServer.ServeHTTP(w, r)
 	})
+}
+
+func renderWebIndexTemplate(webFS fs.FS, cachedTemplate *template.Template, cachedTemplateErr error, reloadTemplates bool) ([]byte, error) {
+	tmpl := cachedTemplate
+	if reloadTemplates {
+		parsed, err := parseWebIndexTemplate(webFS)
+		if err != nil {
+			return nil, fmt.Errorf("render web ui template: %w", err)
+		}
+		tmpl = parsed
+	} else if cachedTemplateErr != nil {
+		return nil, fmt.Errorf("render web ui template: %w", cachedTemplateErr)
+	}
+
+	var rendered bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&rendered, webIndexTemplateName, nil); err != nil {
+		return nil, fmt.Errorf("render web ui template %q: %w", webIndexTemplateName, err)
+	}
+	return rendered.Bytes(), nil
+}
+
+func parseWebIndexTemplate(webFS fs.FS) (*template.Template, error) {
+	files, err := listWebTemplateFiles(webFS)
+	if err != nil {
+		return nil, err
+	}
+	tmpl, err := template.New("webui").ParseFS(webFS, files...)
+	if err != nil {
+		return nil, fmt.Errorf("parse web ui templates: %w", err)
+	}
+	if tmpl.Lookup(webIndexTemplateName) == nil {
+		return nil, fmt.Errorf("web ui template %q not found", webIndexTemplateName)
+	}
+	return tmpl, nil
+}
+
+func listWebTemplateFiles(webFS fs.FS) ([]string, error) {
+	files := make([]string, 0, 8)
+	if err := fs.WalkDir(webFS, "templates", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".tmpl") {
+			files = append(files, path)
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("list web ui templates: %w", err)
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("list web ui templates: no templates found")
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 func (s *Service) login(w http.ResponseWriter, r *http.Request) {
