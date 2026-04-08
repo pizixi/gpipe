@@ -1,6 +1,6 @@
 {
   "database_url": "sqlite://gpipe.db?mode=rwc",
-  "listen_addr": "tcp://0.0.0.0:8117,kcp://0.0.0.0:8118,ws://0.0.0.0:8119",
+  "listen_addr": "tcp://0.0.0.0:8118,kcp://0.0.0.0:8118,ws://0.0.0.0:8119",
   "illegal_traffic_forward": "",
   "enable_tls": false,
   "tls_cert": "./certs/cert.pem",
@@ -8,5 +8,9 @@
   "web_base_dir": "",
   "web_addr": "0.0.0.0:8120",
   "web_username": "admin",
-  "web_password": "admin@1234"
+  "web_password": "admin@1234",
+  "client_template_dir": "./client-templates",
+  "client_artifact_cache_dir": "./client-cache",
+  "quiet": false,
+  "log_dir": "logs"
 }

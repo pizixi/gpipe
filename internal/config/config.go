@@ -17,8 +17,13 @@ type ServerConfig struct {
 	WebAddr               string `json:"web_addr"`
 	WebUsername           string `json:"web_username"`
 	WebPassword           string `json:"web_password"`
-	Quiet                 bool   `json:"quiet"`
-	LogDir                string `json:"log_dir"`
+	// ClientTemplateDir 指向预构建客户端下载模板目录。
+	// 配置后，发布环境可不依赖 Go 工具链直接生成玩家专属客户端。
+	ClientTemplateDir string `json:"client_template_dir"`
+	// ClientArtifactCacheDir 用于缓存已补丁完成的客户端下载结果。
+	ClientArtifactCacheDir string `json:"client_artifact_cache_dir"`
+	Quiet                  bool   `json:"quiet"`
+	LogDir                 string `json:"log_dir"`
 }
 
 func (c *ServerConfig) Normalize() {

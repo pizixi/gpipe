@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,11 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pizixi/gpipe/internal/clientbuild"
 	"github.com/pizixi/gpipe/internal/config"
 	"github.com/pizixi/gpipe/internal/db"
 	"github.com/pizixi/gpipe/internal/manager"
 	"github.com/pizixi/gpipe/internal/model"
 	"github.com/pizixi/gpipe/internal/proto"
+	"github.com/pizixi/gpipe/internal/store"
 )
 
 type playerSessionStub struct{}
@@ -25,6 +28,25 @@ func (playerSessionStub) Close() error { return nil }
 func (playerSessionStub) SendPush(message proto.Message) error {
 	_ = message
 	return nil
+}
+
+// clientBuilderStub 用于隔离真实构建过程，只验证 Web 层参数传递是否正确。
+type clientBuilderStub struct {
+	artifact     *clientbuild.Artifact
+	err          error
+	lastPlayer   model.User
+	lastSettings model.ClientBuildSettings
+	lastTarget   string
+}
+
+func (s *clientBuilderStub) Build(_ context.Context, player model.User, settings model.ClientBuildSettings, targetID string) (*clientbuild.Artifact, error) {
+	s.lastPlayer = player
+	s.lastSettings = settings
+	s.lastTarget = targetID
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.artifact, nil
 }
 
 func TestLoginIssuesSignedCookieAcceptedByAuthCheck(t *testing.T) {
@@ -289,6 +311,88 @@ func TestPlayerListPageSizeZeroReturnsAllPlayers(t *testing.T) {
 	}
 }
 
+func TestPlayerListReturnsCreateTimeAndNewestFirst(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_web_player_list_order?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	userStore := store.NewUserStore(database)
+	users := []model.User{
+		{
+			ID:         10000001,
+			Remark:     "oldest",
+			Key:        "secret-oldest",
+			CreateTime: time.Date(2026, time.April, 8, 8, 0, 0, 0, time.UTC),
+		},
+		{
+			ID:         10000002,
+			Remark:     "newest",
+			Key:        "secret-newest",
+			CreateTime: time.Date(2026, time.April, 8, 10, 0, 0, 0, time.UTC),
+		},
+		{
+			ID:         10000003,
+			Remark:     "middle",
+			Key:        "secret-middle",
+			CreateTime: time.Date(2026, time.April, 8, 9, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, user := range users {
+		if err := userStore.Insert(user); err != nil {
+			t.Fatalf("insert user %s: %v", user.Remark, err)
+		}
+	}
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin",
+		WebPassword: "secret",
+	}, rt)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/player_list",
+		strings.NewReader(`{"page_number":0,"page_size":0}`),
+	)
+	req.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	recorder := httptest.NewRecorder()
+
+	service.playerList(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var resp PlayerListResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Players) != 3 {
+		t.Fatalf("len(players) = %d, want %d", len(resp.Players), 3)
+	}
+	if got, want := resp.Players[0].Remark, "newest"; got != want {
+		t.Fatalf("players[0].remark = %q, want %q", got, want)
+	}
+	if got, want := resp.Players[1].Remark, "middle"; got != want {
+		t.Fatalf("players[1].remark = %q, want %q", got, want)
+	}
+	if got, want := resp.Players[2].Remark, "oldest"; got != want {
+		t.Fatalf("players[2].remark = %q, want %q", got, want)
+	}
+	if resp.Players[0].CreateTime.IsZero() {
+		t.Fatalf("expected create_time to be returned")
+	}
+}
+
 func TestAddPlayerEndpointGeneratesKeyAndReturnsRemarkFields(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_web_add_player_generate_key?mode=memory&cache=shared")
 	if err != nil {
@@ -350,6 +454,134 @@ func TestAddPlayerEndpointGeneratesKeyAndReturnsRemarkFields(t *testing.T) {
 	}
 	if resp.Players[0].Key == "" {
 		t.Fatalf("expected generated key to be returned")
+	}
+}
+
+// 验证客户端生成设置可以通过接口完整保存并再次读取。
+func TestClientBuildSettingsEndpointsRoundTrip(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_web_client_build_settings?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin",
+		WebPassword: "secret",
+	}, rt)
+
+	updateReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/update_client_build_settings",
+		strings.NewReader(`{"server":"tcp://127.0.0.1:8118","enable_tls":true,"tls_server_name":"demo.local","use_shadowsocks":true,"ss_server":"127.0.0.1:8388","ss_method":"aes-128-gcm","ss_password":"ss-secret"}`),
+	)
+	updateReq.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	updateRecorder := httptest.NewRecorder()
+	service.updateClientBuildSettings(updateRecorder, updateReq)
+
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want %d", updateRecorder.Code, http.StatusOK)
+	}
+
+	getReq := httptest.NewRequest(http.MethodPost, "/api/client_build_settings", strings.NewReader(`{}`))
+	getReq.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	getRecorder := httptest.NewRecorder()
+	service.clientBuildSettings(getRecorder, getReq)
+
+	if getRecorder.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want %d", getRecorder.Code, http.StatusOK)
+	}
+
+	var resp ClientBuildSettingsResponse
+	if err := json.Unmarshal(getRecorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Settings.Server != "tcp://127.0.0.1:8118" {
+		t.Fatalf("server = %q, want %q", resp.Settings.Server, "tcp://127.0.0.1:8118")
+	}
+	if !resp.Settings.EnableTLS || !resp.Settings.UseShadowsocks {
+		t.Fatalf("expected TLS and Shadowsocks settings to persist: %+v", resp.Settings)
+	}
+	if resp.Settings.SSServer != "127.0.0.1:8388" {
+		t.Fatalf("ss_server = %q, want %q", resp.Settings.SSServer, "127.0.0.1:8388")
+	}
+}
+
+// 验证下载接口会把玩家信息和后台设置传给构建器，并返回二进制响应。
+func TestGenerateClientEndpointReturnsBinaryArtifact(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_web_generate_client?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	_, _, playerID, err := rt.Players.Add("alice", "player-secret")
+	if err != nil {
+		t.Fatalf("add player: %v", err)
+	}
+	if err := rt.ClientBuildSettings.Save(model.ClientBuildSettings{
+		Server: "tcp://127.0.0.1:8118",
+	}); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin",
+		WebPassword: "secret",
+	}, rt)
+	builder := &clientBuilderStub{
+		artifact: &clientbuild.Artifact{
+			Filename: "gpipe-client-1-windows-amd64.exe",
+			Data:     []byte("binary-data"),
+		},
+	}
+	service.clientBuilder = builder
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/generate_client",
+		strings.NewReader(`{"player_id":`+strconv.FormatUint(uint64(playerID), 10)+`,"target":"windows-amd64"}`),
+	)
+	req.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	recorder := httptest.NewRecorder()
+	service.generateClient(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/octet-stream" {
+		t.Fatalf("content type = %q, want %q", got, "application/octet-stream")
+	}
+	if body := recorder.Body.String(); body != "binary-data" {
+		t.Fatalf("body = %q, want %q", body, "binary-data")
+	}
+	if builder.lastTarget != "windows-amd64" {
+		t.Fatalf("target = %q, want %q", builder.lastTarget, "windows-amd64")
+	}
+	if builder.lastPlayer.Key != "player-secret" {
+		t.Fatalf("player key = %q, want %q", builder.lastPlayer.Key, "player-secret")
+	}
+	if builder.lastSettings.Server != "tcp://127.0.0.1:8118" {
+		t.Fatalf("settings server = %q, want %q", builder.lastSettings.Server, "tcp://127.0.0.1:8118")
 	}
 }
 

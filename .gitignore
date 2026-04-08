@@ -19,6 +19,9 @@ coverage.out
 
 # Build outputs
 bin/
+release/
+client-templates/
+client-cache/
 *.exe
 *.test
 

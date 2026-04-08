@@ -669,6 +669,7 @@
             body {
                 min-height: 100vh;
                 min-height: 100dvh;
+                overflow: hidden;
                 font-family: "Aptos", "Segoe UI", "Microsoft YaHei", sans-serif;
                 background:
                     radial-gradient(
@@ -718,8 +719,8 @@
             .container {
                 max-width: 1240px;
                 width: min(1240px, calc(100vw - 56px));
-                min-height: calc(100vh - 56px);
-                min-height: calc(100dvh - 56px);
+                height: calc(100vh - 56px);
+                height: calc(100dvh - 56px);
                 margin: 28px auto;
                 padding: 30px;
                 background: var(--bg-panel);
@@ -755,6 +756,18 @@
             .modal-content {
                 position: relative;
                 z-index: 1;
+            }
+
+            .login-form {
+                max-height: 100%;
+                overflow: auto;
+            }
+
+            #mainContent {
+                flex: 1 1 auto;
+                min-height: 0;
+                flex-direction: column;
+                overflow: hidden;
             }
 
             .page-header {
@@ -829,6 +842,10 @@
             }
 
             .tab {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 6px;
                 padding: 5px;
                 border-radius: 999px;
                 border: 1px solid rgba(148, 163, 184, 0.22);
@@ -905,10 +922,13 @@
 
             .tabcontent {
                 padding-top: 0;
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow: auto;
             }
 
             .table-scroll {
-                overflow: hidden;
+                overflow: auto;
                 width: 100%;
             }
 
@@ -1327,20 +1347,24 @@
             }
 
             #playerTable th:nth-child(1) {
-                width: 14%;
+                width: 12%;
             }
 
             #playerTable th:nth-child(2),
             #playerTable th:nth-child(3) {
-                width: 22%;
+                width: 18%;
             }
 
             #playerTable th:nth-child(4) {
+                width: 18%;
+            }
+
+            #playerTable th:nth-child(5) {
                 width: 10%;
             }
 
             #playerTable th:last-child {
-                width: 32%;
+                width: 24%;
             }
 
             #tunnelTable th:nth-child(1),
@@ -1472,10 +1496,281 @@
                 background: rgba(255, 255, 255, 0.97);
             }
 
+            #loginForm h2 {
+                text-align: left;
+            }
+
+            .login-form {
+                max-width: min(1040px, calc(100vw - 48px));
+                padding: 22px;
+            }
+
+            .login-shell {
+                display: grid;
+                grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+                gap: 22px;
+                align-items: stretch;
+            }
+
+            .login-showcase {
+                padding: 34px;
+                border-radius: 24px;
+                background:
+                    radial-gradient(
+                        circle at top right,
+                        rgba(59, 130, 246, 0.28),
+                        transparent 32%
+                    ),
+                    linear-gradient(
+                        145deg,
+                        rgba(15, 23, 42, 0.98),
+                        rgba(15, 118, 110, 0.96)
+                    );
+                color: #f8fafc;
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+                    0 18px 36px rgba(15, 23, 42, 0.22);
+            }
+
+            .login-showcase h2 {
+                margin: 0 0 12px;
+                color: #fff;
+                font-size: 34px;
+                line-height: 1.1;
+                letter-spacing: -0.05em;
+            }
+
+            .login-showcase .login-subtitle {
+                max-width: 520px;
+                color: rgba(226, 232, 240, 0.9);
+                font-size: 15px;
+                line-height: 1.7;
+            }
+
+            .login-feature-list {
+                display: flex;
+                flex-direction: column;
+                gap: 14px;
+                margin-top: 28px;
+            }
+
+            .login-feature {
+                display: flex;
+                gap: 14px;
+                padding: 14px 16px;
+                border-radius: 18px;
+                border: 1px solid rgba(226, 232, 240, 0.14);
+                background: rgba(255, 255, 255, 0.08);
+                backdrop-filter: blur(10px);
+            }
+
+            .login-feature-index {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 42px;
+                height: 42px;
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.14);
+                color: #fff;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.12em;
+                flex: none;
+            }
+
+            .login-feature h3 {
+                margin: 0 0 6px;
+                color: #fff;
+                font-size: 16px;
+            }
+
+            .login-feature p {
+                margin: 0;
+                color: rgba(226, 232, 240, 0.86);
+                font-size: 13px;
+                line-height: 1.65;
+            }
+
+            .login-panel {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                padding: 18px 14px 14px;
+            }
+
+            .login-panel .form-group {
+                margin-bottom: 14px;
+            }
+
+            .login-panel .form-group input {
+                height: 52px;
+                font-size: 14px;
+                padding: 0 16px;
+            }
+
+            .login-panel .btn-primary {
+                height: 50px;
+                margin-top: 8px;
+            }
+
+            .settings-card {
+                padding: 28px;
+                border-radius: 24px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(255, 255, 255, 0.92);
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                    0 20px 36px rgba(15, 23, 42, 0.07);
+            }
+
+            .settings-card-header {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 16px;
+                margin-bottom: 22px;
+            }
+
+            .settings-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 14px;
+            }
+
+            .settings-field {
+                margin-bottom: 0;
+                min-height: 58px;
+                padding: 8px 14px;
+                align-items: center;
+                gap: 12px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 18px;
+                background: linear-gradient(
+                    180deg,
+                    rgba(255, 255, 255, 0.98),
+                    rgba(248, 250, 252, 0.92)
+                );
+                box-shadow:
+                    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+                    0 10px 24px rgba(15, 23, 42, 0.05);
+            }
+
+            .settings-field label {
+                flex: 0 0 132px;
+                margin: 0;
+                color: #33506a;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.02em;
+            }
+
+            .settings-field input,
+            .settings-field select {
+                min-width: 0;
+            }
+
+            .settings-field-full {
+                grid-column: 1 / -1;
+            }
+
+            .settings-note {
+                margin-top: 18px;
+                padding: 16px 18px;
+                border-radius: 18px;
+                border: 1px solid rgba(37, 99, 235, 0.14);
+                background: linear-gradient(
+                    135deg,
+                    rgba(239, 246, 255, 0.96),
+                    rgba(240, 253, 250, 0.96)
+                );
+                color: var(--text-secondary);
+                line-height: 1.7;
+            }
+
+            .download-summary {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+                margin-bottom: 18px;
+            }
+
+            .download-summary-item {
+                padding: 14px 16px;
+                border-radius: 16px;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: rgba(248, 250, 252, 0.92);
+            }
+
+            .download-summary-label {
+                display: block;
+                margin-bottom: 6px;
+                font-size: 12px;
+                color: var(--text-secondary);
+            }
+
+            .action-button.btn-accent {
+                color: #0f766e;
+                background: rgba(240, 253, 250, 0.96);
+                border-color: rgba(16, 185, 129, 0.22);
+            }
+
+            .action-button.btn-accent:hover {
+                color: #115e59;
+                background: rgba(204, 251, 241, 0.98);
+                border-color: rgba(13, 148, 136, 0.28);
+            }
+
             .modal-content.tunnel-modal {
                 width: min(92vw, 880px);
                 max-width: 880px;
                 padding: 30px;
+            }
+
+            @media screen and (max-width: 1100px) {
+                .login-shell {
+                    grid-template-columns: 1fr;
+                }
+            }
+
+            @media screen and (max-width: 768px) {
+                .login-form {
+                    width: min(100vw - 24px, 100%);
+                    padding: 18px;
+                }
+
+                .login-showcase,
+                .settings-card {
+                    padding: 20px;
+                }
+
+                .login-showcase h2 {
+                    font-size: 28px;
+                }
+
+                .settings-card-header {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+
+                .settings-grid,
+                .download-summary {
+                    grid-template-columns: 1fr;
+                }
+
+                .settings-field,
+                .settings-field-full {
+                    grid-column: auto;
+                }
+
+                .settings-field {
+                    flex-direction: column;
+                    align-items: flex-start;
+                }
+
+                .settings-field label {
+                    flex: none;
+                }
             }
 
             .modal-content.tunnel-modal h2 {
@@ -1760,6 +2055,15 @@
                     gap: 14px;
                 }
 
+                .tab {
+                    width: 100%;
+                }
+
+                .tab button {
+                    flex: 1 1 120px;
+                    min-width: 0;
+                }
+
                 .toolbar-actions {
                     width: 100%;
                 }
@@ -1771,8 +2075,8 @@
                 .container {
                     margin: 12px;
                     width: auto;
-                    min-height: calc(100vh - 24px);
-                    min-height: calc(100dvh - 24px);
+                    height: calc(100vh - 24px);
+                    height: calc(100dvh - 24px);
                     padding: 18px;
                 }
 
@@ -1847,40 +2151,91 @@
                         EN
                     </button>
                 </div>
-                <div class="login-brand">
-                    <div class="login-kicker">gpipe control</div>
-                    <h2 data-i18n="login_title">登录</h2>
-                    <p class="login-subtitle" data-i18n="login_subtitle">
-                        输入后台账号后进入管理系统
-                    </p>
+                <div class="login-shell">
+                    <div class="login-showcase">
+                        <div class="login-kicker">gpipe control</div>
+                        <h2 data-i18n="login_intro_title">
+                            统一管控玩家、隧道与客户端
+                        </h2>
+                        <p class="login-subtitle" data-i18n="login_intro_text">
+                            一个后台完成玩家密钥管理、隧道维护与专属客户端分发。
+                        </p>
+                        <div class="login-feature-list">
+                            <div class="login-feature">
+                                <span class="login-feature-index">01</span>
+                                <div>
+                                    <h3 data-i18n="login_feature_players">
+                                        玩家与密钥管理
+                                    </h3>
+                                    <p data-i18n="login_feature_players_desc">
+                                        统一维护备注、密钥和在线状态。
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="login-feature">
+                                <span class="login-feature-index">02</span>
+                                <div>
+                                    <h3 data-i18n="login_feature_tunnels">
+                                        隧道编排
+                                    </h3>
+                                    <p data-i18n="login_feature_tunnels_desc">
+                                        快速查询、修改和启停传输隧道。
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="login-feature">
+                                <span class="login-feature-index">03</span>
+                                <div>
+                                    <h3 data-i18n="login_feature_clients">
+                                        客户端生成
+                                    </h3>
+                                    <p data-i18n="login_feature_clients_desc">
+                                        为每个玩家生成内置连接参数的专属二进制。
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="login-panel">
+                        <div class="login-brand">
+                            <div class="login-kicker">admin sign in</div>
+                            <h2 data-i18n="login_title">登录</h2>
+                            <p
+                                class="login-subtitle"
+                                data-i18n="login_subtitle"
+                            >
+                                输入后台账号后进入管理系统
+                            </p>
+                        </div>
+                        <form onsubmit="handleLoginSubmit(event)">
+                            <div class="form-group">
+                                <input
+                                    type="text"
+                                    id="username"
+                                    data-i18n-placeholder="username_placeholder"
+                                    placeholder="用户名"
+                                    autocomplete="username"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <input
+                                    type="password"
+                                    id="password"
+                                    data-i18n-placeholder="password_placeholder"
+                                    placeholder="密码"
+                                    autocomplete="current-password"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                data-i18n="login_button"
+                            >
+                                登录
+                            </button>
+                        </form>
+                    </div>
                 </div>
-                <form onsubmit="handleLoginSubmit(event)">
-                    <div class="form-group">
-                        <input
-                            type="text"
-                            id="username"
-                            data-i18n-placeholder="username_placeholder"
-                            placeholder="用户名"
-                            autocomplete="username"
-                        />
-                    </div>
-                    <div class="form-group">
-                        <input
-                            type="password"
-                            id="password"
-                            data-i18n-placeholder="password_placeholder"
-                            placeholder="密码"
-                            autocomplete="current-password"
-                        />
-                    </div>
-                    <button
-                        type="submit"
-                        class="btn btn-primary"
-                        data-i18n="login_button"
-                    >
-                        登录
-                    </button>
-                </form>
             </div>
 
             <!-- 主内容 -->
@@ -1912,6 +2267,9 @@
                     <div>
                         <div class="page-kicker">gpipe control</div>
                         <h1 data-i18n="console_title">管理控制台</h1>
+                        <p class="page-subtitle" data-i18n="console_subtitle">
+                            统一管理玩家、隧道和客户端参数
+                        </p>
                     </div>
                 </div>
 
@@ -1932,8 +2290,15 @@
                         >
                             隧道管理
                         </button>
+                        <button
+                            class="tablinks"
+                            onclick="openTab(event, 'Settings')"
+                            data-i18n="client_settings"
+                        >
+                            客户端设置
+                        </button>
                     </div>
-                    <div class="toolbar-actions">
+                    <div id="mainToolbarActions" class="toolbar-actions">
                         <div id="playerToolbar" class="action-bar">
                             <div class="search-bar">
                                 <input
@@ -1996,7 +2361,6 @@
                     </div>
                 </div>
 
-                <!-- 玩家管理 -->
                 <div id="Players" class="tabcontent">
                     <div class="table-scroll">
                         <table id="playerTable">
@@ -2004,6 +2368,7 @@
                                 <th data-i18n="id">ID</th>
                                 <th data-i18n="player_remark">备注</th>
                                 <th data-i18n="player_key">密钥</th>
+                                <th data-i18n="create_time">创建时间</th>
                                 <th data-i18n="online_status">在线状态</th>
                                 <th data-i18n="actions">操作</th>
                             </tr>
@@ -2011,7 +2376,6 @@
                     </div>
                 </div>
 
-                <!-- 隧道管理 -->
                 <div id="Tunnels" class="tabcontent">
                     <div class="table-scroll">
                         <table id="tunnelTable">
@@ -2027,6 +2391,149 @@
                                 <th data-i18n="actions">操作</th>
                             </tr>
                         </table>
+                    </div>
+                </div>
+
+                <div id="Settings" class="tabcontent">
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <div>
+                                <div class="page-kicker">client profile</div>
+                                <h2 data-i18n="client_settings_title">
+                                    客户端生成设置
+                                </h2>
+                                <p
+                                    class="page-subtitle"
+                                    data-i18n="client_settings_subtitle"
+                                >
+                                    设置生成客户端时内置的连接参数和 Shadowsocks
+                                    配置。
+                                </p>
+                            </div>
+                            <button
+                                class="btn btn-primary"
+                                type="button"
+                                onclick="saveClientBuildSettings()"
+                                data-i18n="save_settings"
+                            >
+                                保存设置
+                            </button>
+                        </div>
+                        <div class="settings-grid">
+                            <div
+                                class="form-group settings-field settings-field-full"
+                            >
+                                <label
+                                    for="clientServer"
+                                    data-i18n="server_address"
+                                    >服务端地址：</label
+                                >
+                                <input
+                                    type="text"
+                                    id="clientServer"
+                                    data-i18n-placeholder="server_address_placeholder"
+                                    placeholder="例如 tcp://127.0.0.1:8118,ws://127.0.0.1:8119"
+                                />
+                            </div>
+                            <div
+                                class="form-group checkbox-card settings-field"
+                            >
+                                <label
+                                    for="clientEnableTLS"
+                                    data-i18n="enable_tls"
+                                    >启用 TLS：</label
+                                >
+                                <input type="checkbox" id="clientEnableTLS" />
+                            </div>
+                            <div class="form-group settings-field">
+                                <label
+                                    for="clientTLSServerName"
+                                    data-i18n="tls_server_name"
+                                    >TLS Server Name：</label
+                                >
+                                <input
+                                    type="text"
+                                    id="clientTLSServerName"
+                                    data-i18n-placeholder="tls_server_name_placeholder"
+                                    placeholder="可选，留空则自动使用主机名"
+                                />
+                            </div>
+                            <div
+                                class="form-group checkbox-card settings-field"
+                            >
+                                <label
+                                    for="clientUseShadowsocks"
+                                    data-i18n="use_shadowsocks"
+                                    >使用 Shadowsocks：</label
+                                >
+                                <input
+                                    type="checkbox"
+                                    id="clientUseShadowsocks"
+                                    onchange="toggleClientSettingsSSFields()"
+                                />
+                            </div>
+                            <div
+                                class="form-group settings-field"
+                                id="clientSSServerGroup"
+                            >
+                                <label
+                                    for="clientSSServer"
+                                    data-i18n="shadowsocks_server"
+                                    >Shadowsocks 地址：</label
+                                >
+                                <input
+                                    type="text"
+                                    id="clientSSServer"
+                                    data-i18n-placeholder="shadowsocks_server_placeholder"
+                                    placeholder="例如 127.0.0.1:8388"
+                                />
+                            </div>
+                            <div
+                                class="form-group settings-field"
+                                id="clientSSMethodGroup"
+                            >
+                                <label
+                                    for="clientSSMethod"
+                                    data-i18n="shadowsocks_method"
+                                    >Shadowsocks 方法：</label
+                                >
+                                <select id="clientSSMethod">
+                                    <option value="chacha20-ietf-poly1305">
+                                        chacha20-ietf-poly1305
+                                    </option>
+                                    <option value="aes-128-gcm">
+                                        aes-128-gcm
+                                    </option>
+                                    <option value="aes-256-gcm">
+                                        aes-256-gcm
+                                    </option>
+                                </select>
+                            </div>
+                            <div
+                                class="form-group settings-field"
+                                id="clientSSPasswordGroup"
+                            >
+                                <label
+                                    for="clientSSPassword"
+                                    data-i18n="shadowsocks_password"
+                                    >Shadowsocks 密码：</label
+                                >
+                                <input
+                                    type="password"
+                                    id="clientSSPassword"
+                                    data-i18n-placeholder="shadowsocks_password_placeholder"
+                                    placeholder="请输入 Shadowsocks 密码"
+                                />
+                            </div>
+                        </div>
+                        <div
+                            class="settings-note"
+                            data-i18n="client_download_hint"
+                        >
+                            生成后的客户端会自动内置玩家密钥和当前设置，
+                            直接运行默认前台模式，同时支持 install / uninstall /
+                            run-service 命令。
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2190,6 +2697,63 @@
                             data-i18n="update_button"
                         >
                             更新
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="generateClientModal" class="modal">
+                <div class="modal-content">
+                    <span
+                        class="close"
+                        onclick="closeModal('generateClientModal')"
+                        >&times;</span
+                    >
+                    <h2 data-i18n="generate_client">生成客户端</h2>
+                    <div class="download-summary">
+                        <div class="download-summary-item">
+                            <span class="download-summary-label" data-i18n="id"
+                                >ID</span
+                            >
+                            <strong id="generateClientPlayerId">-</strong>
+                        </div>
+                        <div class="download-summary-item">
+                            <span
+                                class="download-summary-label"
+                                data-i18n="player_remark"
+                                >备注</span
+                            >
+                            <strong id="generateClientPlayerRemark">-</strong>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label
+                            for="generateClientTarget"
+                            data-i18n="client_target"
+                            >客户端版本：</label
+                        >
+                        <select id="generateClientTarget"></select>
+                    </div>
+                    <div
+                        id="generateClientSettingsSummary"
+                        class="settings-note"
+                    ></div>
+                    <div class="btn-group">
+                        <button
+                            class="btn btn-secondary"
+                            type="button"
+                            onclick="closeModal('generateClientModal')"
+                            data-i18n="cancel_button"
+                        >
+                            取消
+                        </button>
+                        <button
+                            class="btn btn-primary"
+                            type="button"
+                            onclick="downloadGeneratedClient()"
+                            data-i18n="download_client"
+                        >
+                            生成并下载
                         </button>
                     </div>
                 </div>
@@ -2499,7 +3063,9 @@
                                     type="button"
                                     class="password-toggle-button"
                                     id="editTunnelPasswordToggle"
-                                    onclick="toggleEditTunnelPasswordVisibility()"
+                                    onclick="
+                                        toggleEditTunnelPasswordVisibility()
+                                    "
                                     aria-label="显示密码"
                                     title="显示密码"
                                 >
@@ -2566,21 +3132,38 @@
         <script>
             let currentEditingPlayerId = null;
             let currentEditingTunnelId = null;
+            let currentGeneratingPlayerId = null;
             let playerSearchTimer = null;
             let tunnelSearchTimer = null;
+            let playerRefreshTimer = null;
             const baseUrl =
                 window.location.protocol + "//" + window.location.host;
             let currentLanguage = "zh";
             let playersData = [];
             let tunnelsData = [];
-            let playerSort = { key: "id", direction: "asc" };
+            let clientBuildSettingsData = null;
+            let playerSort = { key: "create_time", direction: "desc" };
             let tunnelSort = { key: "receiver", direction: "asc" };
+            const playerRefreshIntervalMs = 5000;
 
             const i18nResources = {
                 zh: {
                     login_title: "登录",
                     login_subtitle: "输入后台账号后进入管理系统",
+                    login_intro_title: "统一管控玩家、隧道与客户端",
+                    login_intro_text:
+                        "一个后台完成玩家密钥管理、隧道维护与专属客户端分发。",
+                    login_feature_players: "玩家与密钥管理",
+                    login_feature_players_desc:
+                        "统一维护备注、密钥和在线状态。",
+                    login_feature_tunnels: "隧道编排",
+                    login_feature_tunnels_desc:
+                        "快速查询、修改和启停传输隧道。",
+                    login_feature_clients: "客户端生成",
+                    login_feature_clients_desc:
+                        "为每个玩家生成内置连接参数的专属二进制。",
                     console_title: "管理控制台",
+                    console_subtitle: "统一管理玩家、隧道和客户端参数",
                     logout_button: "退出登录",
                     username_placeholder: "用户名",
                     password_placeholder: "密码",
@@ -2588,6 +3171,33 @@
                     login_button: "登录",
                     player_management: "玩家管理",
                     tunnel_management: "隧道管理",
+                    client_settings: "客户端设置",
+                    client_settings_title: "客户端生成设置",
+                    client_settings_subtitle:
+                        "设置生成客户端时内置的连接参数和 Shadowsocks 配置。",
+                    server_address: "服务端地址",
+                    server_address_placeholder:
+                        "例如 tcp://127.0.0.1:8118,ws://127.0.0.1:8119",
+                    enable_tls: "启用 TLS",
+                    tls_server_name: "TLS Server Name",
+                    tls_server_name_placeholder: "可选，留空则自动使用主机名",
+                    use_shadowsocks: "使用 Shadowsocks",
+                    shadowsocks_server: "Shadowsocks 地址",
+                    shadowsocks_server_placeholder: "例如 127.0.0.1:8388",
+                    shadowsocks_method: "Shadowsocks 方法",
+                    shadowsocks_password: "Shadowsocks 密码",
+                    shadowsocks_password_placeholder: "请输入 Shadowsocks 密码",
+                    save_settings: "保存设置",
+                    save_settings_failed: "保存设置失败: ",
+                    settings_saved: "设置已保存",
+                    generate_client: "生成客户端",
+                    client_target: "客户端版本",
+                    download_client: "生成并下载",
+                    generate_client_failed: "生成客户端失败: ",
+                    client_settings_required:
+                        "请先在左侧“客户端设置”里填写服务端参数",
+                    client_download_hint:
+                        "生成后的客户端会自动内置玩家密钥和当前设置，直接运行默认前台模式，同时支持 install / uninstall / run-service 命令。",
                     add_player: "添加玩家",
                     search_player_placeholder: "搜索备注...",
                     search_tunnel_placeholder: "输入玩家ID或描述关键字",
@@ -2595,6 +3205,7 @@
                     id: "ID",
                     player_remark: "备注",
                     player_key: "密钥",
+                    create_time: "创建时间",
                     username: "用户名",
                     password: "密码",
                     online_status: "在线状态",
@@ -2655,9 +3266,11 @@
                     add_tunnel_failed: "添加隧道失败: ",
                     update_tunnel_failed: "更新隧道失败: ",
                     login_failed: "登录失败: ",
-                    shadowsocks_password_required: "Shadowsocks 协议密码不能为空",
+                    shadowsocks_password_required:
+                        "Shadowsocks 协议密码不能为空",
                     show_password: "显示密码",
                     hide_password: "隐藏密码",
+                    player_not_found: "未找到指定的玩家",
                     tunnel_not_found: "未找到指定的隧道",
                     empty_players: "暂无玩家数据",
                     empty_tunnels: "暂无隧道数据",
@@ -2667,6 +3280,19 @@
                 en: {
                     login_title: "Login",
                     login_subtitle: "Sign in to enter the control panel",
+                    login_intro_title:
+                        "Manage players, tunnels, and clients in one place",
+                    login_intro_text:
+                        "Use one admin panel for key management, tunnel maintenance, and dedicated client delivery.",
+                    login_feature_players: "Player & Key Management",
+                    login_feature_players_desc:
+                        "Keep remarks, keys, and online status under control.",
+                    login_feature_tunnels: "Tunnel Operations",
+                    login_feature_tunnels_desc:
+                        "Search, edit, and toggle runtime tunnels quickly.",
+                    login_feature_clients: "Client Packaging",
+                    login_feature_clients_desc:
+                        "Generate per-player binaries with embedded connection settings.",
                     console_title: "Control Console",
                     console_subtitle:
                         "Manage players, tunnels, and runtime status in one place",
@@ -2677,6 +3303,36 @@
                     login_button: "Login",
                     player_management: "Players",
                     tunnel_management: "Tunnels",
+                    client_settings: "Client Settings",
+                    client_settings_title: "Client Build Settings",
+                    client_settings_subtitle:
+                        "Configure embedded connection and Shadowsocks options for generated clients.",
+                    server_address: "Server Address",
+                    server_address_placeholder:
+                        "For example tcp://127.0.0.1:8118,ws://127.0.0.1:8119",
+                    enable_tls: "Enable TLS",
+                    tls_server_name: "TLS Server Name",
+                    tls_server_name_placeholder:
+                        "Optional. Hostname is used when empty.",
+                    use_shadowsocks: "Use Shadowsocks",
+                    shadowsocks_server: "Shadowsocks Server",
+                    shadowsocks_server_placeholder:
+                        "For example 127.0.0.1:8388",
+                    shadowsocks_method: "Shadowsocks Method",
+                    shadowsocks_password: "Shadowsocks Password",
+                    shadowsocks_password_placeholder:
+                        "Enter the Shadowsocks password",
+                    save_settings: "Save Settings",
+                    save_settings_failed: "Failed to save settings: ",
+                    settings_saved: "Settings saved",
+                    generate_client: "Generate Client",
+                    client_target: "Client Target",
+                    download_client: "Build and Download",
+                    generate_client_failed: "Failed to generate client: ",
+                    client_settings_required:
+                        "Configure the client settings in the left panel first",
+                    client_download_hint:
+                        "Generated clients embed the player key and current settings, run in foreground by default, and still support install / uninstall / run-service.",
                     add_player: "Add Player",
                     search_player_placeholder: "Search remark...",
                     search_tunnel_placeholder:
@@ -2685,6 +3341,7 @@
                     id: "ID",
                     player_remark: "Remark",
                     player_key: "Key",
+                    create_time: "Created",
                     username: "Username",
                     password: "Password",
                     online_status: "Status",
@@ -2751,6 +3408,7 @@
                         "Shadowsocks password is required",
                     show_password: "Show password",
                     hide_password: "Hide password",
+                    player_not_found: "Player not found",
                     tunnel_not_found: "Tunnel not found",
                     empty_players: "No players found",
                     empty_tunnels: "No tunnels found",
@@ -2769,9 +3427,30 @@
                 { value: "Xor", labelKey: "xor" },
             ];
             const tunnelShadowsocksMethodOptions = [
-                { value: defaultShadowsocksMethod, label: defaultShadowsocksMethod },
+                {
+                    value: defaultShadowsocksMethod,
+                    label: defaultShadowsocksMethod,
+                },
                 { value: "aes-128-gcm", label: "aes-128-gcm" },
                 { value: "aes-256-gcm", label: "aes-256-gcm" },
+            ];
+            const clientBuildTargetOptions = [
+                {
+                    value: "windows-amd64",
+                    label: { zh: "Windows x64", en: "Windows x64" },
+                },
+                {
+                    value: "windows-arm64",
+                    label: { zh: "Windows ARM64", en: "Windows ARM64" },
+                },
+                {
+                    value: "linux-amd64",
+                    label: { zh: "Linux x64", en: "Linux x64" },
+                },
+                {
+                    value: "linux-arm64",
+                    label: { zh: "Linux ARM64", en: "Linux ARM64" },
+                },
             ];
 
             window.onload = function () {
@@ -2827,6 +3506,27 @@
                     : escapeHTML(text);
             }
 
+            function formatDateTimeValue(value, fallbackKey = "not_set") {
+                const text = String(value ?? "").trim();
+                if (text === "") {
+                    return `<span class="muted-text">${escapeHTML(
+                        getText(fallbackKey),
+                    )}</span>`;
+                }
+                const date = new Date(text);
+                if (Number.isNaN(date.getTime())) {
+                    return escapeHTML(text);
+                }
+                const pad = (num) => String(num).padStart(2, "0");
+                return escapeHTML(
+                    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+                        date.getDate(),
+                    )} ${pad(date.getHours())}:${pad(
+                        date.getMinutes(),
+                    )}:${pad(date.getSeconds())}`,
+                );
+            }
+
             function getPlayerById(id) {
                 return (
                     playersData.find(
@@ -2844,6 +3544,18 @@
                 return text === "" ? getText(fallbackKey) : text;
             }
 
+            function createDefaultClientBuildSettings() {
+                return {
+                    server: "",
+                    enable_tls: false,
+                    tls_server_name: "",
+                    use_shadowsocks: false,
+                    ss_server: "",
+                    ss_method: defaultShadowsocksMethod,
+                    ss_password: "",
+                };
+            }
+
             function generateRandomPlayerKey() {
                 const bytes = new Uint8Array(playerKeyLength);
                 if (window.crypto?.getRandomValues) {
@@ -2856,9 +3568,7 @@
                 return Array.from(
                     bytes,
                     (byte) =>
-                        playerKeyCharacters[
-                            byte % playerKeyCharacters.length
-                        ],
+                        playerKeyCharacters[byte % playerKeyCharacters.length],
                 ).join("");
             }
 
@@ -2878,13 +3588,17 @@
 
             function renderStatusBadge(isActive, activeKey, inactiveKey) {
                 return `<span class="status-badge ${isActive ? "status-badge-enabled" : "status-badge-disabled"}">${
-                    isActive ? renderBadgeIcon("enabled") : renderBadgeIcon("disabled")
+                    isActive
+                        ? renderBadgeIcon("enabled")
+                        : renderBadgeIcon("disabled")
                 }<span>${escapeHTML(getText(isActive ? activeKey : inactiveKey))}</span></span>`;
             }
 
             function renderOnlineBadge(isOnline) {
                 return `<span class="status-badge ${isOnline ? "status-badge-online" : "status-badge-offline"}">${
-                    isOnline ? renderBadgeIcon("online") : renderBadgeIcon("offline")
+                    isOnline
+                        ? renderBadgeIcon("online")
+                        : renderBadgeIcon("offline")
                 }<span>${escapeHTML(getText(isOnline ? "online" : "offline"))}</span></span>`;
             }
 
@@ -2897,7 +3611,9 @@
             }
 
             function renderProtocolChip(type) {
-                const key = ["tcp", "udp", "socks5", "http", "shadowsocks"][type];
+                const key = ["tcp", "udp", "socks5", "http", "shadowsocks"][
+                    type
+                ];
                 return `<span class="protocol-chip">${escapeHTML(
                     key ? getText(key) : getText("not_set"),
                 )}</span>`;
@@ -2932,6 +3648,8 @@
                         return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>`;
                     case "disable":
                         return `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"></path></svg>`;
+                    case "download":
+                        return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>`;
                     default:
                         return "";
                 }
@@ -2946,9 +3664,7 @@
             ) {
                 return `<button class="action-button ${className}" type="button" title="${escapeHTML(
                     title,
-                )}" aria-label="${escapeHTML(
-                    title,
-                )}" ${
+                )}" aria-label="${escapeHTML(title)}" ${
                     disabled
                         ? 'disabled aria-disabled="true"'
                         : `onclick="${onclick}"`
@@ -2970,6 +3686,292 @@
                         button.setAttribute("aria-label", label);
                         button.setAttribute("title", label);
                     });
+            }
+
+            function renderClientTargetOptions(selectedValue = null) {
+                const select = document.getElementById("generateClientTarget");
+                if (!select) {
+                    return;
+                }
+                const currentValue = selectedValue ?? select.value;
+                select.innerHTML = "";
+                clientBuildTargetOptions.forEach((option) => {
+                    const element = document.createElement("option");
+                    element.value = option.value;
+                    element.textContent =
+                        option.label[currentLanguage] || option.label.zh;
+                    select.appendChild(element);
+                });
+                select.value = clientBuildTargetOptions.some(
+                    (option) => option.value === currentValue,
+                )
+                    ? currentValue
+                    : clientBuildTargetOptions[0].value;
+            }
+
+            function fillClientBuildSettingsForm(settings) {
+                const data = {
+                    ...createDefaultClientBuildSettings(),
+                    ...(settings || {}),
+                };
+                document.getElementById("clientServer").value =
+                    data.server || "";
+                document.getElementById("clientEnableTLS").checked =
+                    !!data.enable_tls;
+                document.getElementById("clientTLSServerName").value =
+                    data.tls_server_name || "";
+                document.getElementById("clientUseShadowsocks").checked =
+                    !!data.use_shadowsocks;
+                document.getElementById("clientSSServer").value =
+                    data.ss_server || "";
+                document.getElementById("clientSSMethod").value =
+                    data.ss_method || defaultShadowsocksMethod;
+                document.getElementById("clientSSPassword").value =
+                    data.ss_password || "";
+                toggleClientSettingsSSFields();
+            }
+
+            function readClientBuildSettingsForm() {
+                return {
+                    server: document
+                        .getElementById("clientServer")
+                        .value.trim(),
+                    enable_tls:
+                        document.getElementById("clientEnableTLS").checked,
+                    tls_server_name: document
+                        .getElementById("clientTLSServerName")
+                        .value.trim(),
+                    use_shadowsocks: document.getElementById(
+                        "clientUseShadowsocks",
+                    ).checked,
+                    ss_server: document
+                        .getElementById("clientSSServer")
+                        .value.trim(),
+                    ss_method:
+                        document.getElementById("clientSSMethod").value ||
+                        defaultShadowsocksMethod,
+                    ss_password: document
+                        .getElementById("clientSSPassword")
+                        .value.trim(),
+                };
+            }
+
+            function toggleClientSettingsSSFields() {
+                const enabled = document.getElementById(
+                    "clientUseShadowsocks",
+                ).checked;
+                [
+                    "clientSSServerGroup",
+                    "clientSSMethodGroup",
+                    "clientSSPasswordGroup",
+                ].forEach((id) => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.style.display = enabled ? "flex" : "none";
+                    }
+                });
+            }
+
+            function renderClientSettingsSummary(settings) {
+                const summary = document.getElementById(
+                    "generateClientSettingsSummary",
+                );
+                if (!summary) {
+                    return;
+                }
+                const data = {
+                    ...createDefaultClientBuildSettings(),
+                    ...(settings || {}),
+                };
+                const lines = [
+                    `${getText("server_address")}: ${escapeHTML(
+                        getDisplayText(data.server),
+                    )}`,
+                    `${getText("enable_tls")}: ${escapeHTML(
+                        data.enable_tls
+                            ? getText("enabled")
+                            : getText("disabled"),
+                    )}`,
+                ];
+                if ((data.tls_server_name || "").trim() !== "") {
+                    lines.push(
+                        `${getText("tls_server_name")}: ${escapeHTML(
+                            data.tls_server_name,
+                        )}`,
+                    );
+                }
+                lines.push(
+                    `${getText("use_shadowsocks")}: ${escapeHTML(
+                        data.use_shadowsocks
+                            ? getText("enabled")
+                            : getText("disabled"),
+                    )}`,
+                );
+                if (data.use_shadowsocks) {
+                    lines.push(
+                        `${getText("shadowsocks_server")}: ${escapeHTML(
+                            getDisplayText(data.ss_server),
+                        )}`,
+                    );
+                    lines.push(
+                        `${getText("shadowsocks_method")}: ${escapeHTML(
+                            getDisplayText(data.ss_method),
+                        )}`,
+                    );
+                }
+                summary.innerHTML = lines.join("<br />");
+            }
+
+            async function loadClientBuildSettings() {
+                try {
+                    const data = await apiRequest(
+                        "/api/client_build_settings",
+                        "POST",
+                        {},
+                    );
+                    if (Number(data?.code) === 10086) {
+                        showLoginForm();
+                        return;
+                    }
+                    clientBuildSettingsData = {
+                        ...createDefaultClientBuildSettings(),
+                        ...(data.settings || {}),
+                    };
+                } catch (error) {
+                    console.error(error);
+                    clientBuildSettingsData =
+                        createDefaultClientBuildSettings();
+                }
+                fillClientBuildSettingsForm(clientBuildSettingsData);
+                renderClientSettingsSummary(clientBuildSettingsData);
+                renderClientTargetOptions();
+            }
+
+            async function saveClientBuildSettings() {
+                const settings = readClientBuildSettingsForm();
+                try {
+                    const data = await apiRequest(
+                        "/api/update_client_build_settings",
+                        "POST",
+                        settings,
+                    );
+                    if (data.code === 0) {
+                        clientBuildSettingsData = { ...settings };
+                        fillClientBuildSettingsForm(clientBuildSettingsData);
+                        renderClientSettingsSummary(clientBuildSettingsData);
+                        alert(getText("settings_saved"));
+                    } else {
+                        alert(getText("save_settings_failed") + data.msg);
+                    }
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
+            function showSettingsTab() {
+                const button = Array.from(
+                    document.getElementsByClassName("tablinks"),
+                ).find((item) =>
+                    String(item.getAttribute("onclick") || "").includes(
+                        "'Settings'",
+                    ),
+                );
+                if (button) {
+                    button.click();
+                }
+            }
+
+            function showGenerateClientModal(id) {
+                const player = getPlayerById(id);
+                if (!player) {
+                    alert(getText("player_not_found"));
+                    return;
+                }
+                if (
+                    !clientBuildSettingsData ||
+                    String(clientBuildSettingsData.server || "").trim() === ""
+                ) {
+                    alert(getText("client_settings_required"));
+                    showSettingsTab();
+                    return;
+                }
+                currentGeneratingPlayerId = id;
+                document.getElementById("generateClientPlayerId").textContent =
+                    String(player.id);
+                document.getElementById(
+                    "generateClientPlayerRemark",
+                ).textContent = getDisplayText(player.remark);
+                renderClientTargetOptions();
+                renderClientSettingsSummary(clientBuildSettingsData);
+                document.getElementById("generateClientModal").style.display =
+                    "block";
+            }
+
+            function parseDownloadFilename(disposition) {
+                const value = String(disposition || "");
+                const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+                if (utf8Match && utf8Match[1]) {
+                    return decodeURIComponent(utf8Match[1]);
+                }
+                const match = value.match(/filename="([^"]+)"/i);
+                return match && match[1] ? match[1] : "";
+            }
+
+            async function downloadGeneratedClient() {
+                if (currentGeneratingPlayerId === null) {
+                    return;
+                }
+                const target = document.getElementById(
+                    "generateClientTarget",
+                ).value;
+                try {
+                    const response = await fetch(
+                        baseUrl + "/api/generate_client",
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                player_id: currentGeneratingPlayerId,
+                                target,
+                            }),
+                            credentials: "include",
+                        },
+                    );
+                    const contentType =
+                        response.headers.get("Content-Type") || "";
+                    if (contentType.includes("application/json")) {
+                        const data = await response.json();
+                        if (data.code === 10086) {
+                            showLoginForm();
+                            return;
+                        }
+                        alert(
+                            getText("generate_client_failed") +
+                                (data.msg || ""),
+                        );
+                        return;
+                    }
+                    const blob = await response.blob();
+                    const filename =
+                        parseDownloadFilename(
+                            response.headers.get("Content-Disposition"),
+                        ) || `gpipe-client-${currentGeneratingPlayerId}`;
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    URL.revokeObjectURL(url);
+                    closeModal("generateClientModal");
+                } catch (error) {
+                    console.error(error);
+                    alert(
+                        getText("generate_client_failed") +
+                            String(error?.message || error),
+                    );
+                }
             }
 
             function updateEditTunnelPasswordToggle() {
@@ -3027,7 +4029,9 @@
                 tunnelType,
                 selectedValue = null,
             ) {
-                const select = document.getElementById(prefix + "TunnelEncryption");
+                const select = document.getElementById(
+                    prefix + "TunnelEncryption",
+                );
                 const currentValue = selectedValue ?? select.value;
                 const options = isShadowsocksTunnelType(tunnelType)
                     ? tunnelShadowsocksMethodOptions
@@ -3183,15 +4187,21 @@
                     }
                 });
                 updateGenerateKeyButtons();
+                renderClientTargetOptions();
                 updateEditTunnelPasswordToggle();
                 toggleTunnelTypeFields("new");
                 toggleTunnelTypeFields("edit");
+                if (clientBuildSettingsData) {
+                    fillClientBuildSettingsForm(clientBuildSettingsData);
+                    renderClientSettingsSummary(clientBuildSettingsData);
+                }
                 if (
                     document.getElementById("mainContent").style.display !==
                     "none"
                 ) {
                     loadPlayers();
                     loadTunnels();
+                    loadClientBuildSettings();
                 }
             }
 
@@ -3228,15 +4238,43 @@
                 }
             }
 
+            function stopPlayerAutoRefresh() {
+                if (playerRefreshTimer !== null) {
+                    clearInterval(playerRefreshTimer);
+                    playerRefreshTimer = null;
+                }
+            }
+
+            function startPlayerAutoRefresh() {
+                if (playerRefreshTimer !== null) {
+                    return;
+                }
+                playerRefreshTimer = window.setInterval(() => {
+                    if (document.hidden) {
+                        return;
+                    }
+                    if (
+                        document.getElementById("mainContent").style.display ===
+                        "none"
+                    ) {
+                        return;
+                    }
+                    loadPlayers();
+                }, playerRefreshIntervalMs);
+            }
+
             function showMainContent() {
                 document.getElementById("loginForm").style.display = "none";
-                document.getElementById("mainContent").style.display = "block";
+                document.getElementById("mainContent").style.display = "flex";
                 loadPlayers();
                 loadTunnels();
+                loadClientBuildSettings();
+                startPlayerAutoRefresh();
                 document.getElementById("defaultOpen").click();
             }
 
             function showLoginForm() {
+                stopPlayerAutoRefresh();
                 document.getElementById("loginForm").style.display = "block";
                 document.getElementById("mainContent").style.display = "none";
                 document.getElementById("password").value = "";
@@ -3286,6 +4324,8 @@
                         return player.remark;
                     case "key":
                         return player.key;
+                    case "create_time":
+                        return Date.parse(player.create_time || "") || 0;
                     case "online":
                         return !!player.online;
                     default:
@@ -3332,6 +4372,7 @@
                     ${renderSortableHeader("id", playerSort, "id", "togglePlayerSort")}
                     ${renderSortableHeader("player_remark", playerSort, "remark", "togglePlayerSort")}
                     ${renderSortableHeader("player_key", playerSort, "key", "togglePlayerSort")}
+                    ${renderSortableHeader("create_time", playerSort, "create_time", "togglePlayerSort")}
                     ${renderSortableHeader("online_status", playerSort, "online", "togglePlayerSort")}
                     <th data-i18n="actions">${getText("actions")}</th>
                 </tr>`;
@@ -3355,7 +4396,7 @@
                 );
 
                 if (players.length === 0) {
-                    table.innerHTML += renderEmptyState(5, "empty_players");
+                    table.innerHTML += renderEmptyState(6, "empty_players");
                     return;
                 }
 
@@ -3377,6 +4418,11 @@
                                 player.key,
                             )}</span>
                         </td>
+                        <td data-label="${getText("create_time")}">
+                            <span class="cell-ellipsis">${formatDateTimeValue(
+                                player.create_time,
+                            )}</span>
+                        </td>
                         <td data-label="${getText("online_status")}">${renderOnlineBadge(
                             !!player.online,
                         )}</td>
@@ -3387,6 +4433,14 @@
                                     getText("edit_player"),
                                     `showEditPlayerModalFromPayload('${payload}')`,
                                     "edit",
+                                )}
+                                ${renderActionButton(
+                                    "btn-accent",
+                                    getText("generate_client"),
+                                    `showGenerateClientModal(${escapeHTML(
+                                        player.id,
+                                    )})`,
+                                    "download",
                                 )}
                                 ${renderActionButton(
                                     "btn-danger",
@@ -3410,6 +4464,10 @@
                         page_number: 0,
                         page_size: 0,
                     });
+                    if (Number(data?.code) === 10086) {
+                        showLoginForm();
+                        return;
+                    }
                     playersData = Array.isArray(data.players)
                         ? data.players
                         : [];
@@ -3526,7 +4584,9 @@
                                     "delete",
                                 )}
                                 ${renderActionButton(
-                                    tunnel.enabled ? "btn-warning" : "btn-success",
+                                    tunnel.enabled
+                                        ? "btn-warning"
+                                        : "btn-success",
                                     getText(
                                         tunnel.enabled ? "disabled" : "enabled",
                                     ),
@@ -3546,6 +4606,10 @@
                         page_number: 0,
                         page_size: 0,
                     });
+                    if (Number(data?.code) === 10086) {
+                        showLoginForm();
+                        return;
+                    }
                     tunnelsData = Array.isArray(data.tunnels)
                         ? data.tunnels
                         : [];
@@ -3635,7 +4699,8 @@
                     ).checked
                         ? 1
                         : 0,
-                    encryption_method: encryptionValue ||
+                    encryption_method:
+                        encryptionValue ||
                         (isShadowsocksTunnelType(tunnelType)
                             ? defaultShadowsocksMethod
                             : "None"),
@@ -3774,6 +4839,9 @@
                     currentEditingPlayerId = null;
                     setEditPlayerKeyLocked(false);
                 }
+                if (modalId === "generateClientModal") {
+                    currentGeneratingPlayerId = null;
+                }
                 if (modalId === "editTunnelModal") {
                     setEditTunnelPasswordVisibility(false);
                 }
@@ -3783,7 +4851,9 @@
                 const remark = document
                     .getElementById("newPlayerRemark")
                     .value.trim();
-                const key = document.getElementById("newPlayerKey").value.trim();
+                const key = document
+                    .getElementById("newPlayerKey")
+                    .value.trim();
                 try {
                     const data = await apiRequest("/api/add_player", "POST", {
                         remark,
@@ -3805,9 +4875,15 @@
                 const remark = document
                     .getElementById("editPlayerRemark")
                     .value.trim();
-                const key = document.getElementById("editPlayerKey").value.trim();
+                const key = document
+                    .getElementById("editPlayerKey")
+                    .value.trim();
                 const player = getPlayerById(id);
-                if (player && !!player.online && key !== String(player.key ?? "").trim()) {
+                if (
+                    player &&
+                    !!player.online &&
+                    key !== String(player.key ?? "").trim()
+                ) {
                     alert(getText("online_player_key_locked"));
                     return;
                 }
@@ -3940,11 +5016,17 @@
                 }
                 const playerToolbar = document.getElementById("playerToolbar");
                 const tunnelToolbar = document.getElementById("tunnelToolbar");
+                const toolbarActions =
+                    document.getElementById("mainToolbarActions");
                 if (playerToolbar && tunnelToolbar) {
                     playerToolbar.style.display =
                         tabName === "Players" ? "flex" : "none";
                     tunnelToolbar.style.display =
                         tabName === "Tunnels" ? "flex" : "none";
+                }
+                if (toolbarActions) {
+                    toolbarActions.style.display =
+                        tabName === "Settings" ? "none" : "flex";
                 }
                 document.getElementById(tabName).style.display = "block";
                 evt.currentTarget.className += " active";
@@ -3952,9 +5034,7 @@
 
             function toggleTunnelTypeFields(prefix, selectedEncryption = null) {
                 const type = Number.parseInt(
-                    document.getElementById(
-                        prefix + "TunnelType",
-                    ).value,
+                    document.getElementById(prefix + "TunnelType").value,
                     10,
                 );
                 const tunnelType = Number.isNaN(type) ? 0 : type;
@@ -3991,7 +5071,9 @@
                     );
                 }
 
-                endpointGroup.style.display = usesDynamicTarget ? "none" : "flex";
+                endpointGroup.style.display = usesDynamicTarget
+                    ? "none"
+                    : "flex";
                 usernameGroup.style.display = usesUsername ? "flex" : "none";
                 passwordGroup.style.display = usesPassword ? "flex" : "none";
                 if (usesDynamicTarget) {

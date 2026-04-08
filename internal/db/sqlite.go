@@ -68,6 +68,17 @@ func migrate(db *sql.DB) error {
 			custom_mapping TEXT NOT NULL,
 			encryption_method TEXT NOT NULL
 		)`,
+		// 单行配置表，保存后台“客户端设置”页面的生成参数。
+		`CREATE TABLE IF NOT EXISTS client_build_settings (
+			id INTEGER PRIMARY KEY,
+			server TEXT NOT NULL,
+			enable_tls INTEGER NOT NULL,
+			tls_server_name TEXT NOT NULL,
+			use_shadowsocks INTEGER NOT NULL,
+			ss_server TEXT NOT NULL,
+			ss_method TEXT NOT NULL,
+			ss_password TEXT NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {

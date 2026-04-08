@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/pizixi/gpipe"
 
+	"github.com/pizixi/gpipe/internal/clientbuild"
 	"github.com/pizixi/gpipe/internal/config"
 	"github.com/pizixi/gpipe/internal/manager"
 	"github.com/pizixi/gpipe/internal/model"
@@ -29,13 +31,20 @@ type Service struct {
 	cfg          *config.ServerConfig
 	rt           *manager.Runtime
 	cookieSecret []byte
+	// clientBuilder 负责按玩家和目标平台生成可下载的客户端二进制。
+	clientBuilder clientbuild.Builder
 }
 
+// NewService 创建 Web 管理端服务，并把客户端下载构建器接入运行时配置。
 func NewService(cfg *config.ServerConfig, rt *manager.Runtime) *Service {
 	return &Service{
 		cfg:          cfg,
 		rt:           rt,
 		cookieSecret: newCookieSecret(cfg),
+		clientBuilder: clientbuild.NewBuilder(clientbuild.Options{
+			TemplateDir:      cfg.ClientTemplateDir,
+			ArtifactCacheDir: cfg.ClientArtifactCacheDir,
+		}),
 	}
 }
 
@@ -44,10 +53,13 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/api/login", s.login)
 	mux.HandleFunc("/api/logout", s.logout)
 	mux.HandleFunc("/api/test_auth", s.testAuth)
+	mux.HandleFunc("/api/client_build_settings", s.clientBuildSettings)
+	mux.HandleFunc("/api/update_client_build_settings", s.updateClientBuildSettings)
 	mux.HandleFunc("/api/player_list", s.playerList)
 	mux.HandleFunc("/api/remove_player", s.removePlayer)
 	mux.HandleFunc("/api/add_player", s.addPlayer)
 	mux.HandleFunc("/api/update_player", s.updatePlayer)
+	mux.HandleFunc("/api/generate_client", s.generateClient)
 	mux.HandleFunc("/api/tunnel_list", s.tunnelList)
 	mux.HandleFunc("/api/remove_tunnel", s.removeTunnel)
 	mux.HandleFunc("/api/add_tunnel", s.addTunnel)
@@ -119,6 +131,58 @@ func (s *Service) testAuth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, GeneralResponse{Code: 0, Msg: "hello " + id})
 }
 
+func (s *Service) clientBuildSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuth(w, r) {
+		return
+	}
+	// 客户端设置是一个单例配置，前端直接整块读取即可。
+	settings, err := s.rt.ClientBuildSettings.Get()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, ClientBuildSettingsResponse{
+		Settings: ClientBuildSettingsPayload{
+			Server:         settings.Server,
+			EnableTLS:      settings.EnableTLS,
+			TLSServerName:  settings.TLSServerName,
+			UseShadowsocks: settings.UseShadowsocks,
+			SSServer:       settings.SSServer,
+			SSMethod:       settings.SSMethod,
+			SSPassword:     settings.SSPassword,
+		},
+	})
+}
+
+func (s *Service) updateClientBuildSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuth(w, r) {
+		return
+	}
+	var req ClientBuildSettingsPayload
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	settings := model.ClientBuildSettings{
+		Server:         req.Server,
+		EnableTLS:      req.EnableTLS,
+		TLSServerName:  req.TLSServerName,
+		UseShadowsocks: req.UseShadowsocks,
+		SSServer:       req.SSServer,
+		SSMethod:       req.SSMethod,
+		SSPassword:     req.SSPassword,
+	}
+	if err := clientbuild.ValidateSettings(settings); err != nil {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -2, Msg: err.Error()})
+		return
+	}
+	// 只有校验通过后才持久化，避免前端保存一份无法用于生成客户端的坏配置。
+	if err := s.rt.ClientBuildSettings.Save(settings); err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, GeneralResponse{Code: 0, Msg: "Success"})
+}
+
 func (s *Service) playerList(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAuth(w, r) {
 		return
@@ -153,10 +217,11 @@ func (s *Service) playerList(w http.ResponseWriter, r *http.Request) {
 	players := make([]PlayerListItem, 0, len(users))
 	for _, user := range users {
 		players = append(players, PlayerListItem{
-			ID:     user.ID,
-			Remark: user.Remark,
-			Key:    user.Key,
-			Online: s.rt.Players.IsOnline(user.ID),
+			ID:         user.ID,
+			Remark:     user.Remark,
+			Key:        user.Key,
+			CreateTime: user.CreateTime,
+			Online:     s.rt.Players.IsOnline(user.ID),
 		})
 	}
 	writeJSON(w, http.StatusOK, PlayerListResponse{
@@ -185,6 +250,42 @@ func (s *Service) removePlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, GeneralResponse{Code: 0, Msg: "Success"})
+}
+
+func (s *Service) generateClient(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuth(w, r) {
+		return
+	}
+	var req GenerateClientReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	player, err := s.rt.Users.FindByID(req.PlayerID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	if player == nil {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -2, Msg: "player not found"})
+		return
+	}
+	// 生成时读取的是最新的后台设置，确保下载内容和当前页面保存值一致。
+	settings, err := s.rt.ClientBuildSettings.Get()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	artifact, err := s.clientBuilder.Build(r.Context(), *player, settings, req.Target)
+	if err != nil {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -3, Msg: err.Error()})
+		return
+	}
+	// 直接回二进制流给浏览器，前端无需再额外拼接下载地址。
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, artifact.Filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(artifact.Data)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(artifact.Data)
 }
 
 func (s *Service) addPlayer(w http.ResponseWriter, r *http.Request) {

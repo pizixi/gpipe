@@ -32,7 +32,7 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 	rows, err := s.db.Query(`
 		SELECT id, username, password, create_time
 		FROM user
-		ORDER BY id
+		ORDER BY create_time DESC, id DESC
 		LIMIT ? OFFSET ?`, pageSize, pageNumber*pageSize)
 	if err != nil {
 		return nil, 0, err
@@ -137,7 +137,7 @@ func (s *UserStore) FindAll() ([]model.User, error) {
 	rows, err := s.db.Query(`
 		SELECT id, username, password, create_time
 		FROM user
-		ORDER BY id`)
+		ORDER BY create_time DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}

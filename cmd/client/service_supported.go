@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	serviceName        = "np_client"
-	serviceDisplayName = "npipe client"
-	serviceDescription = "net pipe client"
+	serviceName        = "gpipe_client"
+	serviceDisplayName = "gpipe client"
+	serviceDescription = "go net pipe client"
 )
 
 // serviceProgram 把客户端主循环挂到系统服务生命周期里。

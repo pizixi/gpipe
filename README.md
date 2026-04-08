@@ -17,7 +17,9 @@
 - `internal/proto`：与 Rust 版本兼容的消息编解码
 - `internal/db`：SQLite 初始化与迁移
 - `internal/web`：管理后台 HTTP API
+- `scripts/build-release.ps1`：一键生成发布目录
 - `dist/index.html`：默认管理端页面，构建时会打进服务端二进制
+- `scripts/build-client-templates.ps1`：预构建客户端下载模板
 - `scripts/smoke.ps1`：本地最小链路验证脚本
 
 ## 已实现特性
@@ -67,10 +69,35 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
 - `gpipe.json`
 - `certs/` 目录（仅在 `enable_tls=true` 时需要）
 
+如果你希望 Web 后台在“纯发布版环境”里直接为玩家生成客户端下载，而不依赖本机 Go 工具链和源码目录，额外建议携带：
+
+- `client-templates/` 目录
+
 说明：
 
 - `dist/index.html` 已内置进服务端二进制，发布时不需要再额外携带这个文件
 - 如果设置了 `web_base_dir` 且目录存在，服务端会优先使用磁盘目录中的静态文件，便于本地修改前端后直接查看效果
+- `client-templates/` 可通过 `.\scripts\build-client-templates.ps1` 预先构建；服务端下载玩家客户端时会优先使用这些模板，并把玩家密钥和连接参数直接补丁进二进制
+
+纯发布版模板构建示例：
+
+```powershell
+.\scripts\build-client-templates.ps1 -OutputDir .\client-templates
+```
+
+一键生成发布目录：
+
+```powershell
+.\scripts\build-release.ps1 -OutputDir .\release -Clean
+```
+
+这个脚本会：
+
+- 构建服务端二进制到 `release/bin/`
+- 构建客户端模板到 `release/client-templates/`
+- 复制并规范化 `release/gpipe.json`
+- 创建 `release/client-cache/`、`release/logs/`、`release/gpipe.db`
+- 如果仓库里存在 `certs/`，自动复制到发布目录
 
 Linux 交叉构建客户端示例：
 
@@ -102,6 +129,8 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
   "web_addr": "0.0.0.0:8120",
   "web_username": "admin",
   "web_password": "admin@1234",
+  "client_template_dir": "./client-templates",
+  "client_artifact_cache_dir": "./client-cache",
   "quiet": false,
   "log_dir": "logs"
 }
@@ -121,8 +150,59 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
 | `web_addr`                | Web 管理端监听地址                                                |
 | `web_username`            | Web 管理账号，留空则关闭 Web 管理                                 |
 | `web_password`            | Web 管理密码，留空则关闭 Web 管理                                 |
+| `client_template_dir`     | 可选的客户端模板目录；存在目标模板时，下载玩家客户端不需要 Go 环境 |
+| `client_artifact_cache_dir` | 可选的客户端下载缓存目录；缓存已补丁好的玩家专属二进制          |
 | `quiet`                   | 是否静默运行                                                      |
 | `log_dir`                 | 日志目录                                                          |
+
+## 纯发布版客户端下载
+
+Web 后台“生成客户端”现在支持两种工作模式：
+
+1. 优先读取 `client_template_dir` 下的预构建模板，直接把玩家密钥、服务端地址、TLS、Shadowsocks 参数补丁进二进制。
+2. 如果没有找到模板，再回退到源码目录 + `go build` 动态编译。
+
+推荐发布方式：
+
+- 先在构建机执行 `.\scripts\build-client-templates.ps1`
+- 把生成的 `client-templates/` 目录和服务端程序一起发布
+- 在 `gpipe.json` 里设置 `client_template_dir`
+- 如需减少重复 I/O，再额外配置 `client_artifact_cache_dir`
+
+这样发布机即使没有安装 Go，也可以正常在玩家列表里生成 Windows / Linux 客户端下载。
+
+如果你希望直接一次命令产出完整发布目录，推荐直接执行：
+
+```powershell
+.\scripts\build-release.ps1 -OutputDir .\release -Clean
+```
+
+最小发布目录结构示例：
+
+```text
+release/
+  gpipe.json
+  gpipe.db
+  logs/
+  client-cache/
+  client-templates/
+    gpipe-client-template-windows-amd64.exe
+    gpipe-client-template-windows-arm64.exe
+    gpipe-client-template-linux-amd64
+    gpipe-client-template-linux-arm64
+  certs/
+    cert.pem
+    server.key.pem
+  bin/
+    gpipe-server.exe
+```
+
+说明：
+
+- `client-templates/` 是纯发布版环境里网页“生成客户端”功能的关键目录
+- `client-cache/` 可以预先创建，也可以让服务端首次运行时自动创建
+- `certs/` 只有在 `enable_tls=true` 时才需要
+- 如果是 Linux 发布，把 `bin/gpipe-server.exe` 换成 Linux 对应可执行文件名即可
 
 ## 客户端运行
 

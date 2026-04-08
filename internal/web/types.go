@@ -1,5 +1,7 @@
 package web
 
+import "time"
+
 type LoginReq struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -16,16 +18,39 @@ type PlayerListRequest struct {
 }
 
 type PlayerListItem struct {
-	ID     uint32 `json:"id"`
-	Remark string `json:"remark"`
-	Key    string `json:"key"`
-	Online bool   `json:"online"`
+	ID         uint32    `json:"id"`
+	Remark     string    `json:"remark"`
+	Key        string    `json:"key"`
+	CreateTime time.Time `json:"create_time"`
+	Online     bool      `json:"online"`
 }
 
 type PlayerListResponse struct {
 	Players       []PlayerListItem `json:"players"`
 	CurPageNumber int              `json:"cur_page_number"`
 	TotalCount    int              `json:"total_count"`
+}
+
+// ClientBuildSettingsResponse 返回后台“客户端设置”页面的当前值。
+type ClientBuildSettingsResponse struct {
+	Settings ClientBuildSettingsPayload `json:"settings"`
+}
+
+// ClientBuildSettingsPayload 是前后端之间传输的客户端生成设置结构。
+type ClientBuildSettingsPayload struct {
+	Server         string `json:"server"`
+	EnableTLS      bool   `json:"enable_tls"`
+	TLSServerName  string `json:"tls_server_name"`
+	UseShadowsocks bool   `json:"use_shadowsocks"`
+	SSServer       string `json:"ss_server"`
+	SSMethod       string `json:"ss_method"`
+	SSPassword     string `json:"ss_password"`
+}
+
+// GenerateClientReq 描述一次玩家客户端下载请求。
+type GenerateClientReq struct {
+	PlayerID uint32 `json:"player_id"`
+	Target   string `json:"target"`
 }
 
 type PlayerRemoveReq struct {

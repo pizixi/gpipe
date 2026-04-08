@@ -151,6 +151,14 @@ func resolveDial(common commonArgs) (client.DialFunc, error) {
 
 func parseCommand(args []string) (string, []string, error) {
 	if len(args) == 0 {
+		// 专属客户端在没有显式命令时，默认直接进入前台运行。
+		_, ok, err := embeddedCommonArgs()
+		if err != nil {
+			return "", nil, err
+		}
+		if ok {
+			return "run", nil, nil
+		}
 		return "", nil, fmt.Errorf("missing command")
 	}
 	command := strings.ToLower(strings.TrimSpace(args[0]))
