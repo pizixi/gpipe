@@ -87,6 +87,25 @@ func TestRuntimeBuilderBuildUsesTemplateAndWritesCache(t *testing.T) {
 	}
 }
 
+func TestLookupTargetLinuxArmV7(t *testing.T) {
+	target, ok := LookupTarget("linux-armv7")
+	if !ok {
+		t.Fatalf("target not found")
+	}
+	if target.GOOS != "linux" {
+		t.Fatalf("GOOS = %q, want %q", target.GOOS, "linux")
+	}
+	if target.GOARCH != "arm" {
+		t.Fatalf("GOARCH = %q, want %q", target.GOARCH, "arm")
+	}
+	if target.GOARM != "7" {
+		t.Fatalf("GOARM = %q, want %q", target.GOARM, "7")
+	}
+	if target.TemplateName != "gpipe-client-template-linux-armv7" {
+		t.Fatalf("TemplateName = %q, want %q", target.TemplateName, "gpipe-client-template-linux-armv7")
+	}
+}
+
 // 验证模板构建命令通过 -ldflags 注入完整占位串，服务端后续才能在二进制里定位并替换。
 func TestGoBuildTemplateContainsPatchablePlaceholder(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)

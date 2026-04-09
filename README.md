@@ -190,6 +190,7 @@ release/
     gpipe-client-template-windows-arm64.exe
     gpipe-client-template-linux-amd64
     gpipe-client-template-linux-arm64
+    gpipe-client-template-linux-armv7
   certs/
     cert.pem
     server.key.pem

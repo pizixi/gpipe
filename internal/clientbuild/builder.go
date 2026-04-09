@@ -34,6 +34,7 @@ type Target struct {
 	ID           string
 	GOOS         string
 	GOARCH       string
+	GOARM        string
 	Filename     string
 	TemplateName string
 }
@@ -82,6 +83,14 @@ var supportedTargets = []Target{
 		GOARCH:       "arm64",
 		Filename:     "gpipe-client",
 		TemplateName: "gpipe-client-template-linux-arm64",
+	},
+	{
+		ID:           "linux-armv7",
+		GOOS:         "linux",
+		GOARCH:       "arm",
+		GOARM:        "7",
+		Filename:     "gpipe-client",
+		TemplateName: "gpipe-client-template-linux-armv7",
 	},
 }
 
@@ -269,6 +278,9 @@ func (b *RuntimeBuilder) compileWithGoBuild(ctx context.Context, player model.Us
 		"GOOS="+target.GOOS,
 		"GOARCH="+target.GOARCH,
 	)
+	if target.GOARM != "" {
+		cmd.Env = append(cmd.Env, "GOARM="+target.GOARM)
+	}
 	if output, err := cmd.CombinedOutput(); err != nil {
 		message := strings.TrimSpace(string(output))
 		if message == "" {

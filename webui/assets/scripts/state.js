@@ -337,5 +337,12 @@
                     value: "linux-arm64",
                     label: { zh: "Linux ARM64", en: "Linux ARM64" },
                 },
+                {
+                    value: "linux-armv7",
+                    label: {
+                        zh: "Linux ARMv7 (armv7l)",
+                        en: "Linux ARMv7 (armv7l)",
+                    },
+                },
             ];
 
