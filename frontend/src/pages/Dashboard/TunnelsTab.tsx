@@ -36,6 +36,8 @@ interface Props {
   onSelectedPlayerIdChange: (playerId: number | null) => void;
 }
 
+type PlayerChipVariant = 'online' | 'offline' | 'unknown';
+
 const ProtocolIcon: React.FC<{ type: number }> = ({ type }) => {
   switch (type) {
     case 0:
@@ -105,11 +107,27 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     loadTunnels();
   }, [loadTunnels]);
 
-  const getPlayerLabel = (id: number) => {
-    if (id === 0) return t('server_side');
+  const getPlayerMeta = (id: number): { label: string; variant: PlayerChipVariant; tooltip: string } => {
+    if (id === 0) {
+      const label = t('server_side');
+      return { label, variant: 'online', tooltip: `${label} · ${t('online')}` };
+    }
     const player = players.find((item) => item.id === id);
-    if (!player) return String(id);
-    return player.remark ? `${player.id} · ${player.remark}` : String(player.id);
+    if (!player) {
+      const label = String(id);
+      return { label, variant: 'unknown', tooltip: label };
+    }
+    const label = player.remark ? `${player.id} · ${player.remark}` : String(player.id);
+    const statusText = t(player.online ? 'online' : 'offline');
+    return {
+      label,
+      variant: player.online ? 'online' : 'offline',
+      tooltip: `${label} · ${statusText}`,
+    };
+  };
+
+  const getPlayerLabel = (id: number) => {
+    return getPlayerMeta(id).label;
   };
 
   const playerOptions = [
@@ -216,10 +234,12 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       sorter: (a, b) => a.receiver - b.receiver,
       width: 240,
       render: (value: number) => {
-        const label = getPlayerLabel(value);
+        const meta = getPlayerMeta(value);
         return (
-          <Tooltip title={label}>
-            <span className="table-chip">{label}</span>
+          <Tooltip title={meta.tooltip}>
+            <span className={`table-chip table-chip--${meta.variant}`}>
+              <span className="table-chip-text">{meta.label}</span>
+            </span>
           </Tooltip>
         );
       },
@@ -248,10 +268,12 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       sorter: (a, b) => a.sender - b.sender,
       width: 240,
       render: (value: number) => {
-        const label = getPlayerLabel(value);
+        const meta = getPlayerMeta(value);
         return (
-          <Tooltip title={label}>
-            <span className="table-chip">{label}</span>
+          <Tooltip title={meta.tooltip}>
+            <span className={`table-chip table-chip--${meta.variant}`}>
+              <span className="table-chip-text">{meta.label}</span>
+            </span>
           </Tooltip>
         );
       },
@@ -271,7 +293,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('protocol_type'),
       dataIndex: 'tunnel_type',
       sorter: (a, b) => a.tunnel_type - b.tunnel_type,
-      width: 180,
+      width: 170,
       render: (value: number) => {
         const label = t(TunnelTypeLabels[value] || 'not_set');
         const style = protocolStyles[value] || { color: '#475569', background: '#f8fafc' };
@@ -289,7 +311,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('status'),
       dataIndex: 'enabled',
       sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
-      width: 132,
+      width: 122,
       align: 'center' as const,
       render: (value: boolean) => (
         <StatusPill variant={value ? 'enabled' : 'disabled'} label={t(value ? 'enabled' : 'disabled')} />

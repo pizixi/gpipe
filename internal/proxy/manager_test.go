@@ -54,6 +54,74 @@ func TestSyncTunnelsRestartsInletWhenDescriptionChanges(t *testing.T) {
 	waitForTCPState(t, "127.0.0.1:"+port2, false)
 }
 
+func TestUpdateTunnelTogglesInletRuntimeState(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	manager := NewManager(logger, 0, func(playerID uint32, message any) error {
+		_ = playerID
+		_ = message
+		return nil
+	})
+
+	addr := "127.0.0.1:" + freeTCPPort(t)
+	tunnel := &pb.Tunnel{
+		ID:               2,
+		Enabled:          true,
+		Sender:           123,
+		Receiver:         0,
+		TunnelType:       int32(pb.TunnelTypeTCP),
+		Source:           &pb.TunnelPoint{Addr: addr},
+		Endpoint:         &pb.TunnelPoint{Addr: "127.0.0.1:9"},
+		EncryptionMethod: "None",
+	}
+	manager.SyncTunnels([]*pb.Tunnel{tunnel})
+	t.Cleanup(func() { manager.SyncTunnels(nil) })
+	waitForTCPState(t, addr, true)
+
+	disabled := *tunnel
+	disabled.Enabled = false
+	manager.UpdateTunnel(&pb.ModifyTunnelNtf{Tunnel: &disabled})
+	waitForTCPState(t, addr, false)
+
+	reEnabled := disabled
+	reEnabled.Enabled = true
+	manager.UpdateTunnel(&pb.ModifyTunnelNtf{Tunnel: &reEnabled})
+	waitForTCPState(t, addr, true)
+
+	manager.UpdateTunnel(&pb.ModifyTunnelNtf{IsDelete: true, Tunnel: &reEnabled})
+	waitForTCPState(t, addr, false)
+}
+
+func TestUpdateTunnelRestartsInletWhenDescriptionChanges(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	manager := NewManager(logger, 0, func(playerID uint32, message any) error {
+		_ = playerID
+		_ = message
+		return nil
+	})
+
+	port1 := freeTCPPort(t)
+	port2 := freeTCPPort(t)
+	tunnel := &pb.Tunnel{
+		ID:               3,
+		Enabled:          true,
+		Sender:           123,
+		Receiver:         0,
+		TunnelType:       int32(pb.TunnelTypeTCP),
+		Source:           &pb.TunnelPoint{Addr: "127.0.0.1:" + port1},
+		Endpoint:         &pb.TunnelPoint{Addr: "127.0.0.1:9"},
+		EncryptionMethod: "None",
+	}
+	manager.SyncTunnels([]*pb.Tunnel{tunnel})
+	t.Cleanup(func() { manager.SyncTunnels(nil) })
+	waitForTCPState(t, "127.0.0.1:"+port1, true)
+
+	updated := *tunnel
+	updated.Source = &pb.TunnelPoint{Addr: "127.0.0.1:" + port2}
+	manager.UpdateTunnel(&pb.ModifyTunnelNtf{Tunnel: &updated})
+	waitForTCPState(t, "127.0.0.1:"+port1, false)
+	waitForTCPState(t, "127.0.0.1:"+port2, true)
+}
+
 func TestHandlePBRoutesByMessageDirection(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 

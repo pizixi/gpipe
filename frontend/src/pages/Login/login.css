@@ -1,9 +1,11 @@
 .login-shell {
   min-height: 100vh;
+  min-height: 100svh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 28px;
+  overflow-y: auto;
   background:
     radial-gradient(circle at top left, rgba(45, 212, 191, 0.16), transparent 34%),
     radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.12), transparent 28%),
@@ -169,18 +171,24 @@
 }
 
 @media (max-width: 900px) {
+  .login-shell {
+    align-items: flex-start;
+  }
+
   .login-frame {
     grid-template-columns: 1fr;
+    max-width: 580px;
+    margin: 0 auto;
   }
 
   .login-hero {
-    min-height: 260px;
+    min-height: auto;
   }
 }
 
 @media (max-width: 640px) {
   .login-shell {
-    padding: 18px;
+    padding: 14px 14px 20px;
   }
 
   .login-hero,
@@ -188,15 +196,67 @@
     border-radius: 22px !important;
   }
 
+  .login-frame {
+    gap: 16px;
+  }
+
   .login-hero {
-    padding: 24px;
+    padding: 20px;
+  }
+
+  .login-hero::after {
+    display: none;
   }
 
   .login-hero-title {
-    font-size: 28px !important;
+    margin: 14px 0 6px;
+    font-size: 26px !important;
+  }
+
+  .login-hero-text {
+    max-width: none;
+    font-size: 13px;
+    line-height: 1.55;
   }
 
   .login-feature-list {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 0;
+  }
+
+  .login-feature-chip {
+    padding: 10px 8px 9px;
+    border-radius: 14px;
+    text-align: center;
+  }
+
+  .login-feature-chip .anticon {
+    margin-bottom: 6px;
+    font-size: 16px;
+  }
+
+  .login-feature-chip strong {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .login-card {
+    padding: 4px;
+  }
+
+  .login-card-head {
+    margin-bottom: 20px;
+  }
+
+  .login-submit {
+    height: 44px;
+  }
+}
+
+@media (max-height: 780px) {
+  .login-shell {
+    align-items: flex-start;
   }
 }

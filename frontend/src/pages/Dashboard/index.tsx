@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Layout, Tabs, Button, Typography, Space, Badge, Spin } from 'antd';
 import {
   LogoutOutlined,
@@ -30,9 +30,25 @@ const DashboardPage: React.FC = () => {
   const { t } = useTranslation();
   const logout = useAuthStore((s) => s.logout);
   const players = usePlayerStore((s) => s.players);
+  const loadPlayers = usePlayerStore((s) => s.loadPlayers);
   const onlineCount = players.filter((p) => p.online).length;
   const [activeKey, setActiveKey] = useState('players');
   const [tunnelPlayerFilterId, setTunnelPlayerFilterId] = useState<number | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    loadPlayers();
+    refreshTimerRef.current = setInterval(() => {
+      if (!document.hidden) {
+        loadPlayers();
+      }
+    }, 5000);
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [loadPlayers]);
 
   const handleOpenPlayerTunnels = (playerId: number) => {
     setTunnelPlayerFilterId(playerId);
@@ -94,22 +110,11 @@ const DashboardPage: React.FC = () => {
 
   return (
     <Layout className="dashboard-shell">
-      <Header
-        style={{
-          background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0 28px',
-          minHeight: 70,
-          height: 'auto',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        }}
-      >
-        <Space align="center" size={14}>
-          <ApiOutlined style={{ fontSize: 24, color: '#fff' }} />
+      <Header className="dashboard-header">
+        <Space className="dashboard-header-main" align="center" size={10}>
+          <ApiOutlined style={{ fontSize: 20, color: '#fff' }} />
           <div className="dashboard-header-copy">
-            <Title level={4} style={{ margin: 0, color: '#fff', fontWeight: 700, letterSpacing: 0.4 }}>
+            <Title className="dashboard-header-title" level={4}>
               {t('console_title')}
             </Title>
             <Text className="dashboard-header-subtitle">
@@ -117,11 +122,11 @@ const DashboardPage: React.FC = () => {
             </Text>
           </div>
         </Space>
-        <Space size={12} align="center">
+        <Space className="dashboard-header-actions" size={8} align="center">
           <Badge
             status="processing"
             text={
-              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13 }}>
+              <Text className="dashboard-header-status">
                 {onlineCount} {t('online')}
               </Text>
             }

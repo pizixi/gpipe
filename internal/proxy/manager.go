@@ -79,86 +79,11 @@ func (m *Manager) SyncTunnels(tunnels []*pb.Tunnel) {
 	}
 
 	for _, tunnel := range tunnels {
-		if tunnel == nil || !tunnel.Enabled {
+		if tunnel == nil {
 			continue
 		}
-		if tunnel.Sender == m.selfPlayerID {
-			m.mu.Lock()
-			_, ok := m.outlets[tunnel.ID]
-			current := m.tunnels[tunnel.ID]
-			m.mu.Unlock()
-			if !ok && current != nil && current.Enabled && current.Sender == m.selfPlayerID && outletDescription(current) == outletDescription(tunnel) {
-				m.logger.Printf("启动出口 tunnel=%d self=%d", tunnel.ID, m.selfPlayerID)
-				outlet := NewOutlet(m.logger, func(msg ProxyMessage) {
-					m.routeProxyMessage(tunnel, msg)
-				}, outletDescription(tunnel))
-				m.mu.Lock()
-				current = m.tunnels[tunnel.ID]
-				if _, exists := m.outlets[tunnel.ID]; !exists && current != nil && current.Enabled && current.Sender == m.selfPlayerID && outletDescription(current) == outletDescription(tunnel) {
-					m.outlets[tunnel.ID] = outlet
-				}
-				m.mu.Unlock()
-			}
-		}
-		if tunnel.Receiver == m.selfPlayerID {
-			m.mu.RLock()
-			_, ok := m.inlets[tunnel.ID]
-			current := m.tunnels[tunnel.ID]
-			m.mu.RUnlock()
-			if ok || current == nil || !current.Enabled || current.Receiver != m.selfPlayerID || inletDescription(current) != inletDescription(tunnel) {
-				continue
-			}
-			commonMethod := tunnel.EncryptionMethod
-			if tunnelModeFromWireValue(tunnel.TunnelType) == TunnelModeShadowsocks {
-				commonMethod = string(EncryptionNone)
-			}
-			common, err := NewSessionCommonInfoFromName(tunnel.IsCompressed, commonMethod)
-			if err != nil {
-				m.logger.Printf("创建入口公共配置失败: %v", err)
-				continue
-			}
-			source := ""
-			if tunnel.Source != nil {
-				source = tunnel.Source.Addr
-			}
-			endpoint := ""
-			if tunnel.Endpoint != nil {
-				endpoint = tunnel.Endpoint.Addr
-			}
-			inlet := NewInlet(
-				m.logger,
-				tunnel.ID,
-				tunnelModeFromWireValue(tunnel.TunnelType),
-				source,
-				endpoint,
-				common,
-				InletAuthData{
-					Username: tunnel.Username,
-					Password: tunnel.Password,
-					Method:   tunnel.EncryptionMethod,
-				},
-				func(msg ProxyMessage) {
-					m.routeProxyMessage(tunnel, msg)
-				},
-				inletDescription(tunnel),
-			)
-			m.logger.Printf("启动入口 tunnel=%d self=%d source=%s endpoint=%s", tunnel.ID, m.selfPlayerID, source, endpoint)
-			if err := inlet.Start(); err != nil {
-				m.logger.Printf("启动入口失败: %v", err)
-				continue
-			}
-			installed := false
-			m.mu.Lock()
-			current = m.tunnels[tunnel.ID]
-			if _, exists := m.inlets[tunnel.ID]; !exists && current != nil && current.Enabled && current.Receiver == m.selfPlayerID && inletDescription(current) == inletDescription(tunnel) {
-				m.inlets[tunnel.ID] = inlet
-				installed = true
-			}
-			m.mu.Unlock()
-			if !installed {
-				_ = inlet.Stop()
-			}
-		}
+		m.startOutletIfNeeded(tunnel)
+		m.startInletIfNeeded(tunnel)
 	}
 }
 
@@ -194,18 +119,142 @@ func (m *Manager) UpdateTunnel(msg *pb.ModifyTunnelNtf) {
 	if msg == nil || msg.Tunnel == nil {
 		return
 	}
+	var stopOutlet *Outlet
+	var stopInlet *Inlet
+
 	m.mu.Lock()
 	if msg.IsDelete {
 		delete(m.tunnels, msg.Tunnel.ID)
 	} else {
 		m.tunnels[msg.Tunnel.ID] = msg.Tunnel
 	}
-	list := make([]*pb.Tunnel, 0, len(m.tunnels))
-	for _, tunnel := range m.tunnels {
-		list = append(list, tunnel)
+	current := m.tunnels[msg.Tunnel.ID]
+	if outlet := m.outlets[msg.Tunnel.ID]; m.shouldStopOutlet(outlet, current) {
+		stopOutlet = outlet
+		delete(m.outlets, msg.Tunnel.ID)
+	}
+	if inlet := m.inlets[msg.Tunnel.ID]; m.shouldStopInlet(inlet, current) {
+		stopInlet = inlet
+		delete(m.inlets, msg.Tunnel.ID)
 	}
 	m.mu.Unlock()
-	m.SyncTunnels(list)
+
+	if stopOutlet != nil {
+		_ = stopOutlet.Stop()
+	}
+	if stopInlet != nil {
+		_ = stopInlet.Stop()
+	}
+	if msg.IsDelete {
+		return
+	}
+	m.startOutletIfNeeded(msg.Tunnel)
+	m.startInletIfNeeded(msg.Tunnel)
+}
+
+func (m *Manager) shouldRunOutlet(tunnel *pb.Tunnel) bool {
+	return tunnel != nil && tunnel.Enabled && tunnel.Sender == m.selfPlayerID
+}
+
+func (m *Manager) shouldRunInlet(tunnel *pb.Tunnel) bool {
+	return tunnel != nil && tunnel.Enabled && tunnel.Receiver == m.selfPlayerID
+}
+
+func (m *Manager) shouldStopOutlet(outlet *Outlet, tunnel *pb.Tunnel) bool {
+	return outlet != nil && (!m.shouldRunOutlet(tunnel) || outlet.Description() != outletDescription(tunnel))
+}
+
+func (m *Manager) shouldStopInlet(inlet *Inlet, tunnel *pb.Tunnel) bool {
+	return inlet != nil && (!m.shouldRunInlet(tunnel) || inlet.Description() != inletDescription(tunnel))
+}
+
+func (m *Manager) startOutletIfNeeded(tunnel *pb.Tunnel) {
+	if !m.shouldRunOutlet(tunnel) {
+		return
+	}
+	m.mu.Lock()
+	_, ok := m.outlets[tunnel.ID]
+	current := m.tunnels[tunnel.ID]
+	m.mu.Unlock()
+	if ok || current == nil || !m.shouldRunOutlet(current) || outletDescription(current) != outletDescription(tunnel) {
+		return
+	}
+
+	m.logger.Printf("启动出口 tunnel=%d self=%d", tunnel.ID, m.selfPlayerID)
+	outlet := NewOutlet(m.logger, func(msg ProxyMessage) {
+		m.routeProxyMessage(tunnel, msg)
+	}, outletDescription(tunnel))
+
+	m.mu.Lock()
+	current = m.tunnels[tunnel.ID]
+	if _, exists := m.outlets[tunnel.ID]; !exists && current != nil && m.shouldRunOutlet(current) && outletDescription(current) == outletDescription(tunnel) {
+		m.outlets[tunnel.ID] = outlet
+	}
+	m.mu.Unlock()
+}
+
+func (m *Manager) startInletIfNeeded(tunnel *pb.Tunnel) {
+	if !m.shouldRunInlet(tunnel) {
+		return
+	}
+	m.mu.RLock()
+	_, ok := m.inlets[tunnel.ID]
+	current := m.tunnels[tunnel.ID]
+	m.mu.RUnlock()
+	if ok || current == nil || !m.shouldRunInlet(current) || inletDescription(current) != inletDescription(tunnel) {
+		return
+	}
+
+	commonMethod := tunnel.EncryptionMethod
+	if tunnelModeFromWireValue(tunnel.TunnelType) == TunnelModeShadowsocks {
+		commonMethod = string(EncryptionNone)
+	}
+	common, err := NewSessionCommonInfoFromName(tunnel.IsCompressed, commonMethod)
+	if err != nil {
+		m.logger.Printf("创建入口公共配置失败: %v", err)
+		return
+	}
+	source := ""
+	if tunnel.Source != nil {
+		source = tunnel.Source.Addr
+	}
+	endpoint := ""
+	if tunnel.Endpoint != nil {
+		endpoint = tunnel.Endpoint.Addr
+	}
+	inlet := NewInlet(
+		m.logger,
+		tunnel.ID,
+		tunnelModeFromWireValue(tunnel.TunnelType),
+		source,
+		endpoint,
+		common,
+		InletAuthData{
+			Username: tunnel.Username,
+			Password: tunnel.Password,
+			Method:   tunnel.EncryptionMethod,
+		},
+		func(msg ProxyMessage) {
+			m.routeProxyMessage(tunnel, msg)
+		},
+		inletDescription(tunnel),
+	)
+	m.logger.Printf("启动入口 tunnel=%d self=%d source=%s endpoint=%s", tunnel.ID, m.selfPlayerID, source, endpoint)
+	if err := inlet.Start(); err != nil {
+		m.logger.Printf("启动入口失败: %v", err)
+		return
+	}
+	installed := false
+	m.mu.Lock()
+	current = m.tunnels[tunnel.ID]
+	if _, exists := m.inlets[tunnel.ID]; !exists && current != nil && m.shouldRunInlet(current) && inletDescription(current) == inletDescription(tunnel) {
+		m.inlets[tunnel.ID] = inlet
+		installed = true
+	}
+	m.mu.Unlock()
+	if !installed {
+		_ = inlet.Stop()
+	}
 }
 
 func (m *Manager) routeProxyMessage(tunnel *pb.Tunnel, message ProxyMessage) {

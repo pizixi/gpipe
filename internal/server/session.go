@@ -55,7 +55,7 @@ func (h *Hub) SetRuntime(rt *manager.Runtime) {
 	var tunnels []*pb.Tunnel
 	for _, tunnel := range rt.Tunnel.All() {
 		if tunnel.Sender == 0 || tunnel.Receiver == 0 {
-			tunnels = append(tunnels, modelToTunnelPB(tunnel))
+			tunnels = append(tunnels, h.runtimeTunnelPB(tunnel))
 		}
 	}
 	h.proxyMgr.SyncTunnels(tunnels)
@@ -93,26 +93,62 @@ func (h *Hub) sessionFor(playerID uint32) *Session {
 }
 
 func (h *Hub) BroadcastTunnel(playerID uint32, tunnel model.Tunnel, isDelete bool) {
-	if h.proxyMgr != nil && (tunnel.Sender == 0 || tunnel.Receiver == 0) {
-		h.proxyMgr.UpdateTunnel(&pb.ModifyTunnelNtf{
-			IsDelete: isDelete,
-			Tunnel:   modelToTunnelPB(tunnel),
-		})
-	}
+	update := h.runtimeTunnelUpdate(tunnel, isDelete)
 	if playerID == 0 {
+		h.syncServerTunnelUpdate(update)
+		return
+	}
+	h.pushTunnelUpdate(playerID, update)
+}
+
+func (h *Hub) pushTunnelUpdate(playerID uint32, update *pb.ModifyTunnelNtf) {
+	if playerID == 0 || update == nil {
 		return
 	}
 	session := h.sessionFor(playerID)
 	if session == nil {
 		return
 	}
-	if err := session.SendPush(&pb.ModifyTunnelNtf{
-		IsDelete: isDelete,
-		Tunnel:   modelToTunnelPB(tunnel),
-	}); err != nil {
+	if err := session.SendPush(update); err != nil {
 		h.logger.Printf("broadcast tunnel to player %d failed: %v", playerID, err)
 		_ = session.Close()
 	}
+}
+
+func (h *Hub) syncServerTunnelUpdate(update *pb.ModifyTunnelNtf) {
+	if update == nil || update.Tunnel == nil || h.proxyMgr == nil {
+		return
+	}
+	if update.Tunnel.Sender == 0 || update.Tunnel.Receiver == 0 {
+		h.proxyMgr.UpdateTunnel(update)
+	}
+}
+
+func (h *Hub) broadcastPlayerTunnelStates(playerID, skipPlayerID uint32) {
+	if h.runtime == nil || playerID == 0 {
+		return
+	}
+	for _, tunnel := range h.runtime.Tunnel.ByPlayer(playerID) {
+		update := h.runtimeTunnelUpdate(tunnel, false)
+		h.syncServerTunnelUpdate(update)
+		if tunnel.Sender != 0 && tunnel.Sender != skipPlayerID {
+			h.pushTunnelUpdate(tunnel.Sender, update)
+		}
+		if tunnel.Receiver != 0 && tunnel.Receiver != skipPlayerID && tunnel.Receiver != tunnel.Sender {
+			h.pushTunnelUpdate(tunnel.Receiver, update)
+		}
+	}
+}
+
+func (h *Hub) playerAvailable(playerID uint32) bool {
+	if playerID == 0 {
+		return true
+	}
+	return h.runtime != nil && h.runtime.Players.IsOnline(playerID)
+}
+
+func (h *Hub) tunnelRuntimeEnabled(tunnel model.Tunnel) bool {
+	return tunnel.Enabled && h.playerAvailable(tunnel.Sender) && h.playerAvailable(tunnel.Receiver)
 }
 
 type Session struct {
@@ -141,10 +177,16 @@ func (s *Session) Close() error {
 		close(s.closeCh)
 		s.writeQueue.Close()
 		if s.playerID != 0 {
-			s.hub.unregisterPlayer(s.playerID, s)
-			s.hub.runtime.Players.Unbind(s.playerID, s)
+			playerID := s.playerID
+			s.hub.unregisterPlayer(playerID, s)
+			if s.hub.runtime != nil {
+				s.hub.runtime.Players.Unbind(playerID, s)
+				s.hub.broadcastPlayerTunnelStates(playerID, playerID)
+			}
 		}
-		_ = s.conn.Close()
+		if s.conn != nil {
+			_ = s.conn.Close()
+		}
 	})
 	return nil
 }
@@ -383,8 +425,9 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 	tunnels := s.hub.runtime.Tunnel.ByPlayer(user.ID)
 	reply := &pb.LoginAck{PlayerID: user.ID}
 	for _, tunnel := range tunnels {
-		reply.TunnelList = append(reply.TunnelList, modelToTunnelPB(tunnel))
+		reply.TunnelList = append(reply.TunnelList, s.hub.runtimeTunnelPB(tunnel))
 	}
+	s.hub.broadcastPlayerTunnelStates(user.ID, user.ID)
 	return reply
 }
 
@@ -415,12 +458,12 @@ func (s *Session) String() string {
 	return b.String()
 }
 
-func modelToTunnelPB(tunnel model.Tunnel) *pb.Tunnel {
+func (h *Hub) runtimeTunnelPB(tunnel model.Tunnel) *pb.Tunnel {
 	return &pb.Tunnel{
 		Source:           &pb.TunnelPoint{Addr: tunnel.Source},
 		Endpoint:         &pb.TunnelPoint{Addr: tunnel.Endpoint},
 		ID:               tunnel.ID,
-		Enabled:          tunnel.Enabled,
+		Enabled:          h.tunnelRuntimeEnabled(tunnel),
 		Sender:           tunnel.Sender,
 		Receiver:         tunnel.Receiver,
 		TunnelType:       int32(tunnel.TunnelType),
@@ -429,6 +472,13 @@ func modelToTunnelPB(tunnel model.Tunnel) *pb.Tunnel {
 		IsCompressed:     tunnel.IsCompressed,
 		EncryptionMethod: tunnel.EncryptionMethod,
 		CustomMapping:    tunnel.CustomMapping,
+	}
+}
+
+func (h *Hub) runtimeTunnelUpdate(tunnel model.Tunnel, isDelete bool) *pb.ModifyTunnelNtf {
+	return &pb.ModifyTunnelNtf{
+		IsDelete: isDelete,
+		Tunnel:   h.runtimeTunnelPB(tunnel),
 	}
 }
 

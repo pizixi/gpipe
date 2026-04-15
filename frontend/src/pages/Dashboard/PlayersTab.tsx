@@ -35,18 +35,11 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
   const [genOpen, setGenOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<PlayerListItem | null>(null);
   const [genPlayerId, setGenPlayerId] = useState<number | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tableRegionRef, tableRegionHeight] = useElementHeight<HTMLDivElement>();
 
   useEffect(() => {
     loadPlayers();
-    timerRef.current = setInterval(() => {
-      if (!document.hidden) loadPlayers();
-    }, 5000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
   }, [loadPlayers]);
 
   const handleSearch = useCallback(
