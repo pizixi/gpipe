@@ -25,6 +25,10 @@ client-cache/
 *.exe
 *.test
 
+# Frontend
+frontend/node_modules/
+webui/dist/
+
 # Runtime data
 logs/
 .smoke/

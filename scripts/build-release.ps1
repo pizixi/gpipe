@@ -5,6 +5,7 @@ param(
     [string]$ServerGOARCH = "",
     [switch]$SkipTemplates,
     [switch]$SkipCerts,
+    [switch]$SkipFrontend,
     [switch]$Clean
 )
 
@@ -62,6 +63,53 @@ function Invoke-GoBuild([string]$GoOS, [string]$GoArch, [string]$OutputPath, [st
     }
 }
 
+function Resolve-CommandPath([string[]]$Names) {
+    foreach ($name in $Names) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $command) {
+            return $command.Source
+        }
+    }
+    return $null
+}
+
+function Invoke-FrontendBuild([string]$FrontendDir) {
+    $npmPath = Resolve-CommandPath @("npm", "npm.cmd")
+    if ([string]::IsNullOrWhiteSpace($npmPath)) {
+        throw "npm is required to build the frontend"
+    }
+
+    $nodeModulesDir = Join-Path $FrontendDir "node_modules"
+    $packageLockPath = Join-Path $FrontendDir "package-lock.json"
+
+    Push-Location $FrontendDir
+    try {
+        if (-not (Test-Path -LiteralPath $nodeModulesDir)) {
+            if (Test-Path -LiteralPath $packageLockPath) {
+                Write-Host "Installing frontend dependencies with npm ci"
+                & $npmPath "ci"
+                if ($LASTEXITCODE -ne 0) {
+                    throw "npm ci failed"
+                }
+            } else {
+                Write-Host "Installing frontend dependencies with npm install"
+                & $npmPath "install"
+                if ($LASTEXITCODE -ne 0) {
+                    throw "npm install failed"
+                }
+            }
+        }
+
+        Write-Host "Building frontend -> webui/dist"
+        & $npmPath "run" "build"
+        if ($LASTEXITCODE -ne 0) {
+            throw "npm run build failed"
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
 function Write-Utf8NoBom([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
 }
@@ -91,10 +139,18 @@ $targetGoOS = if ([string]::IsNullOrWhiteSpace($ServerGOOS)) { Get-GoEnvValue "G
 $targetGoArch = if ([string]::IsNullOrWhiteSpace($ServerGOARCH)) { Get-GoEnvValue "GOHOSTARCH" } else { $ServerGOARCH.Trim() }
 $serverName = if ($targetGoOS -eq "windows") { "gpipe-server.exe" } else { "gpipe-server" }
 $serverOutputPath = Join-Path $binDir $serverName
+$frontendDir = Join-Path $repoRoot "frontend"
 
-Write-Host "Building server $targetGoOS/$targetGoArch -> $serverOutputPath"
+Write-Host "Preparing release package -> $resolvedOutputDir"
 Push-Location $repoRoot
 try {
+    if (-not $SkipFrontend) {
+        Invoke-FrontendBuild -FrontendDir $frontendDir
+    } else {
+        Write-Host "Skipping frontend build"
+    }
+
+    Write-Host "Building server $targetGoOS/$targetGoArch -> $serverOutputPath"
     Invoke-GoBuild -GoOS $targetGoOS -GoArch $targetGoArch -OutputPath $serverOutputPath -PackagePath ".\cmd\server"
 
     if (-not $SkipTemplates) {

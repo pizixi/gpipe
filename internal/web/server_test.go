@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -124,7 +125,7 @@ func TestHandlerServesEmbeddedIndexWhenWebBaseDirIsEmpty(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	body := recorder.Body.String()
-	if !strings.Contains(body, "<!doctype html>") {
+	if !strings.Contains(body, "<div id=\"root\"></div>") || !strings.Contains(body, "<script type=\"module\"") {
 		t.Fatalf("expected embedded index html response")
 	}
 }
@@ -132,7 +133,20 @@ func TestHandlerServesEmbeddedIndexWhenWebBaseDirIsEmpty(t *testing.T) {
 func TestHandlerServesEmbeddedAssetsWhenWebBaseDirIsEmpty(t *testing.T) {
 	handler := NewService(&config.ServerConfig{}, nil).Handler()
 
-	req := httptest.NewRequest(http.MethodGet, "/assets/scripts/app.js", nil)
+	indexReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(indexRecorder, indexReq)
+
+	if indexRecorder.Code != http.StatusOK {
+		t.Fatalf("index status = %d, want %d", indexRecorder.Code, http.StatusOK)
+	}
+
+	matches := regexp.MustCompile(`(?:src|href)="\./(assets/[^"]+\.js)"`).FindStringSubmatch(indexRecorder.Body.String())
+	if len(matches) != 2 {
+		t.Fatalf("expected embedded asset path in index html")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/"+matches[1], nil)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 
@@ -140,9 +154,11 @@ func TestHandlerServesEmbeddedAssetsWhenWebBaseDirIsEmpty(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, "function updateLanguage()") {
-		t.Fatalf("expected embedded app.js response")
+	if contentType := resp.Header.Get("Content-Type"); !strings.Contains(contentType, "javascript") {
+		t.Fatalf("content type = %q, want javascript asset", contentType)
+	}
+	if recorder.Body.Len() == 0 {
+		t.Fatalf("expected embedded javascript asset response")
 	}
 }
 

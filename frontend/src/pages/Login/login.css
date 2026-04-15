@@ -1,0 +1,202 @@
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(45, 212, 191, 0.16), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.12), transparent 28%),
+    linear-gradient(135deg, #f6fbfa 0%, #f2f8fc 100%);
+}
+
+.login-frame {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.05fr) minmax(320px, 0.95fr);
+  gap: 28px;
+  width: 100%;
+  max-width: 980px;
+  align-items: stretch;
+}
+
+.login-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 34px 34px 30px;
+  border-radius: 28px;
+  background:
+    linear-gradient(155deg, rgba(240, 252, 250, 0.98) 0%, rgba(232, 248, 244, 0.98) 48%, rgba(236, 244, 252, 0.98) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+
+.login-hero::before {
+  content: '';
+  position: absolute;
+  inset: auto -72px -84px auto;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.14), rgba(45, 212, 191, 0));
+}
+
+.login-hero::after {
+  content: '';
+  position: absolute;
+  inset: 26px 24px auto auto;
+  width: 92px;
+  height: 92px;
+  border-radius: 24px;
+  border: 1px solid rgba(13, 148, 136, 0.08);
+  background: rgba(13, 148, 136, 0.04);
+  transform: rotate(18deg);
+}
+
+.login-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.login-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(13, 148, 136, 0.1);
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.login-hero-title {
+  max-width: 340px;
+  margin: 18px 0 8px;
+  color: #0f172a !important;
+  font-size: 34px !important;
+  line-height: 1.16 !important;
+}
+
+.login-hero-text {
+  max-width: 300px;
+  margin: 0 !important;
+  color: #5b6b7d !important;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.login-feature-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 30px;
+}
+
+.login-feature-chip {
+  padding: 13px 13px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.login-feature-chip .anticon {
+  margin-bottom: 8px;
+  font-size: 18px;
+  color: #0f766e;
+}
+
+.login-feature-chip strong {
+  display: block;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px;
+  border-radius: 28px !important;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  box-shadow: 0 24px 54px rgba(15, 23, 42, 0.08) !important;
+}
+
+.login-card-head {
+  text-align: left;
+  margin-bottom: 26px;
+}
+
+.login-card-title {
+  margin: 0 0 6px !important;
+  color: #0f172a !important;
+}
+
+.login-card-subtitle {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.login-form .ant-form-item {
+  margin-bottom: 16px;
+}
+
+.login-form .ant-input-affix-wrapper,
+.login-form .ant-input {
+  border-radius: 14px;
+}
+
+.login-submit {
+  height: 46px;
+  border-radius: 14px;
+  font-weight: 600;
+}
+
+.login-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+}
+
+@media (max-width: 900px) {
+  .login-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .login-hero {
+    min-height: 260px;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-shell {
+    padding: 18px;
+  }
+
+  .login-hero,
+  .login-card {
+    border-radius: 22px !important;
+  }
+
+  .login-hero {
+    padding: 24px;
+  }
+
+  .login-hero-title {
+    font-size: 28px !important;
+  }
+
+  .login-feature-list {
+    grid-template-columns: 1fr;
+  }
+}

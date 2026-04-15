@@ -79,6 +79,12 @@ func (s *Service) staticHandler() http.Handler {
 			return newWebUIHandler(os.DirFS(s.cfg.WebBaseDir), true)
 		}
 	}
+	// Try the new React SPA build output (webui/dist/) first, fall back to webui/.
+	if subFS, err := fs.Sub(gpipe.EmbeddedWebFS, "webui/dist"); err == nil {
+		if _, statErr := fs.Stat(subFS, "index.html"); statErr == nil {
+			return newWebUIHandler(subFS, false)
+		}
+	}
 	subFS, err := fs.Sub(gpipe.EmbeddedWebFS, "webui")
 	if err != nil {
 		return http.NotFoundHandler()
@@ -95,24 +101,37 @@ func newWebUIHandler(webFS fs.FS, reloadTemplates bool) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			// Serve index.html for root path explicitly.
 			if r.URL.Path == "/" || r.URL.Path == "/index.html" {
-				if data, err := fs.ReadFile(webFS, "index.html"); err == nil {
-					w.Header().Set("Content-Type", "text/html; charset=utf-8")
-					http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(data))
-					return
-				}
-				indexHTML, err := renderWebIndexTemplate(webFS, cachedTemplate, cachedTemplateErr, reloadTemplates)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(indexHTML))
+				serveIndexHTML(w, r, webFS, cachedTemplate, cachedTemplateErr, reloadTemplates)
 				return
+			}
+			// For non-API paths, check if the file exists; if not, serve index.html (SPA fallback).
+			if !strings.HasPrefix(r.URL.Path, "/api") {
+				cleanPath := strings.TrimPrefix(r.URL.Path, "/")
+				if _, err := fs.Stat(webFS, cleanPath); err != nil {
+					serveIndexHTML(w, r, webFS, cachedTemplate, cachedTemplateErr, reloadTemplates)
+					return
+				}
 			}
 		}
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+func serveIndexHTML(w http.ResponseWriter, r *http.Request, webFS fs.FS, cachedTemplate *template.Template, cachedTemplateErr error, reloadTemplates bool) {
+	if data, err := fs.ReadFile(webFS, "index.html"); err == nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(data))
+		return
+	}
+	indexHTML, err := renderWebIndexTemplate(webFS, cachedTemplate, cachedTemplateErr, reloadTemplates)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(indexHTML))
 }
 
 func renderWebIndexTemplate(webFS fs.FS, cachedTemplate *template.Template, cachedTemplateErr error, reloadTemplates bool) ([]byte, error) {
