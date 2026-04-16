@@ -102,13 +102,6 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       ),
     },
     {
-      title: t('player_remark'),
-      dataIndex: 'remark',
-      sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? '', 'zh-CN'),
-      ellipsis: true,
-      render: (value: string) => value || <span style={{ color: '#999' }}>{t('not_set')}</span>,
-    },
-    {
       title: t('player_key'),
       dataIndex: 'key',
       ellipsis: true,
@@ -120,6 +113,13 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       sorter: (a, b) => new Date(a.create_time).getTime() - new Date(b.create_time).getTime(),
       render: (value: string) => formatDateTime(value),
       width: 180,
+    },
+    {
+      title: t('player_remark'),
+      dataIndex: 'remark',
+      sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? '', 'zh-CN'),
+      ellipsis: true,
+      render: (value: string) => value || <span style={{ color: '#999' }}>{t('not_set')}</span>,
     },
     {
       title: t('online_status'),

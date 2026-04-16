@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Input, Modal, message, Tooltip, Select } from 'antd';
+import { Table, Button, Input, Modal, message, Tooltip, Select, Grid } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
@@ -93,6 +93,7 @@ const ProtocolIcon: React.FC<{ type: number }> = ({ type }) => {
 
 const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChange }) => {
   const { t } = useTranslation();
+  const screens = Grid.useBreakpoint();
   const { tunnels, loadTunnels } = useTunnelStore();
   const players = usePlayerStore((s) => s.players);
   const [search, setSearch] = useState('');
@@ -226,6 +227,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
   };
 
   const tableScrollY = tableRegionHeight > tableBodyOffset ? tableRegionHeight - tableBodyOffset : undefined;
+  const fixActionColumn = !!screens.md;
 
   const columns: ColumnsType<TunnelListItem> = [
     {
@@ -321,6 +323,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('description'),
       dataIndex: 'description',
       ellipsis: true,
+      width: 240,
       render: (value: string) => {
         if (!value) {
           return <span style={{ color: '#bfbfbf' }}>-</span>;
@@ -335,7 +338,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     {
       title: t('actions'),
       width: 154,
-      fixed: 'right' as const,
+      fixed: fixActionColumn ? ('right' as const) : undefined,
       render: (_, record) => (
         <div className="table-action-group">
           <Tooltip title={t('edit_tunnel')}>
@@ -433,7 +436,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1348, y: tableScrollY }}
+          scroll={{ x: 1566, y: tableScrollY }}
           locale={{ emptyText: t('empty_tunnels') }}
           bordered
           tableLayout="fixed"

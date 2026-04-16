@@ -55,56 +55,58 @@ const SettingsTab: React.FC = () => {
   };
 
   return (
-    <Card className="dashboard-settings-card">
-      <Title level={4} style={{ marginTop: 0 }}>{t('client_settings_title')}</Title>
-      <Text type="secondary">{t('client_settings_subtitle')}</Text>
-      <Form
-        form={form}
-        className="dashboard-settings-form"
-        layout="horizontal"
-        labelAlign="left"
-        labelWrap
-        labelCol={{ flex: '160px' }}
-        wrapperCol={{ flex: '1 1 0' }}
-        style={{ marginTop: 24 }}
-        onFinish={handleSave}
-      >
-        <Form.Item label={t('server_address')} name="server">
-          <Input placeholder={t('server_address_placeholder')} />
-        </Form.Item>
-        <Form.Item label={t('enable_tls')} name="enable_tls" valuePropName="checked">
-          <Switch />
-        </Form.Item>
-        <Form.Item label={t('tls_server_name')} name="tls_server_name">
-          <Input placeholder={t('tls_server_name_placeholder')} />
-        </Form.Item>
-        <Form.Item label={t('use_shadowsocks')} name="use_shadowsocks" valuePropName="checked">
-          <Switch onChange={(value) => setUseSS(value)} />
-        </Form.Item>
-        {useSS && (
-          <>
-            <Form.Item label={t('shadowsocks_server')} name="ss_server">
-              <Input placeholder={t('shadowsocks_server_placeholder')} />
-            </Form.Item>
-            <Form.Item label={t('shadowsocks_method')} name="ss_method">
-              <Select>
-                {ssCipherMethods.map((method) => (
-                  <Select.Option key={method} value={method}>{method}</Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item label={t('shadowsocks_password')} name="ss_password">
-              <Input.Password placeholder={t('shadowsocks_password_placeholder')} />
-            </Form.Item>
-          </>
-        )}
-        <div className="dashboard-settings-actions">
-          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
-            {t('save_settings')}
-          </Button>
-        </div>
-      </Form>
-    </Card>
+    <div className="dashboard-settings-page">
+      <Card className="dashboard-settings-card">
+        <Title level={4} style={{ marginTop: 0 }}>{t('client_settings_title')}</Title>
+        <Text type="secondary">{t('client_settings_subtitle')}</Text>
+        <Form
+          form={form}
+          className="dashboard-settings-form"
+          layout="horizontal"
+          labelAlign="left"
+          labelWrap
+          labelCol={{ flex: '160px' }}
+          wrapperCol={{ flex: '1 1 0' }}
+          style={{ marginTop: 24 }}
+          onFinish={handleSave}
+        >
+          <Form.Item label={t('server_address')} name="server">
+            <Input placeholder={t('server_address_placeholder')} />
+          </Form.Item>
+          <Form.Item label={t('enable_tls')} name="enable_tls" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item label={t('tls_server_name')} name="tls_server_name">
+            <Input placeholder={t('tls_server_name_placeholder')} />
+          </Form.Item>
+          <Form.Item label={t('use_shadowsocks')} name="use_shadowsocks" valuePropName="checked">
+            <Switch onChange={(value) => setUseSS(value)} />
+          </Form.Item>
+          {useSS && (
+            <>
+              <Form.Item label={t('shadowsocks_server')} name="ss_server">
+                <Input placeholder={t('shadowsocks_server_placeholder')} />
+              </Form.Item>
+              <Form.Item label={t('shadowsocks_method')} name="ss_method">
+                <Select>
+                  {ssCipherMethods.map((method) => (
+                    <Select.Option key={method} value={method}>{method}</Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              <Form.Item label={t('shadowsocks_password')} name="ss_password">
+                <Input.Password placeholder={t('shadowsocks_password_placeholder')} />
+              </Form.Item>
+            </>
+          )}
+          <div className="dashboard-settings-actions">
+            <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
+              {t('save_settings')}
+            </Button>
+          </div>
+        </Form>
+      </Card>
+    </div>
   );
 };
 

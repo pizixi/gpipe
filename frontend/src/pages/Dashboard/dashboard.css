@@ -301,6 +301,13 @@
 
 .dashboard-settings-card {
   max-width: 860px;
+  width: 100%;
+}
+
+.dashboard-settings-page {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
 }
 
 .dashboard-settings-form .ant-form-item {
@@ -363,6 +370,14 @@
 
   .dashboard-list-filters {
     width: 100%;
+  }
+
+  .dashboard-settings-page {
+    padding-bottom: 12px;
+  }
+
+  .dashboard-settings-card .ant-card-body {
+    padding: 20px 16px;
   }
 
   .dashboard-settings-form .ant-form-item .ant-form-item-label,
