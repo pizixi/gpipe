@@ -64,18 +64,21 @@ func (o *Outlet) Input(message ProxyMessage) {
 		if session, ok := o.session(msg.ID); ok {
 			if !session.inputQ.Push(msg) {
 				o.logger.Printf("出口会话消息被丢弃: session=%d", msg.ID)
+				o.terminateSession(msg.TunnelID, msg.ID)
 			}
 		}
 	case I2OSendToData:
 		if session, ok := o.session(msg.ID); ok {
 			if !session.inputQ.Push(msg) {
 				o.logger.Printf("出口会话消息被丢弃: session=%d", msg.ID)
+				o.terminateSession(msg.TunnelID, msg.ID)
 			}
 		}
 	case I2ODisconnect:
 		if session, ok := o.session(msg.ID); ok {
 			if !session.inputQ.Push(msg) {
 				o.logger.Printf("出口会话消息被丢弃: session=%d", msg.ID)
+				o.terminateSession(msg.TunnelID, msg.ID)
 			}
 		}
 	case I2ORecvDataResult:
@@ -194,15 +197,16 @@ func (o *Outlet) onSendToData(msg I2OSendToData) error {
 }
 
 func (o *Outlet) onDisconnect(msg I2ODisconnect) error {
-	session, ok := o.session(msg.ID)
-	if !ok {
+	session := o.detachSession(msg.ID)
+	if session == nil {
 		return nil
 	}
-	session.common.Close()
-	o.removeSession(msg.ID)
-	if session.close != nil {
-		session.close()
-	}
+	safeClose(o.logger, goroutineName("outlet-session-", msg.ID), func() error {
+		if session.close != nil {
+			session.close()
+		}
+		return nil
+	})
 	return nil
 }
 
@@ -283,28 +287,54 @@ func (o *Outlet) putSession(id uint32, session *outletSession) {
 			case I2OSendData:
 				if err := o.onSendData(msg); err != nil {
 					o.logger.Printf("出口发送数据失败: %v", err)
+					o.terminateSession(msg.TunnelID, msg.ID)
+					return
 				}
 			case I2OSendToData:
 				if err := o.onSendToData(msg); err != nil {
 					o.logger.Printf("出口发送目标数据失败: %v", err)
+					o.terminateSession(msg.TunnelID, msg.ID)
+					return
 				}
 			case I2ODisconnect:
 				if err := o.onDisconnect(msg); err != nil {
 					o.logger.Printf("出口断开失败: %v", err)
 				}
+				return
 			}
 		}
 	})
 }
 
 func (o *Outlet) removeSession(id uint32) {
+	_ = o.detachSession(id)
+}
+
+func (o *Outlet) detachSession(id uint32) *outletSession {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if session, ok := o.sessions[id]; ok {
-		session.common.Close()
-		session.stopInput()
-		delete(o.sessions, id)
+	session := o.sessions[id]
+	if session == nil {
+		return nil
 	}
+	session.common.Close()
+	session.stopInput()
+	delete(o.sessions, id)
+	return session
+}
+
+func (o *Outlet) terminateSession(tunnelID, sessionID uint32) {
+	session := o.detachSession(sessionID)
+	if session == nil {
+		return
+	}
+	safeClose(o.logger, goroutineName("outlet-session-", sessionID), func() error {
+		if session.close != nil {
+			session.close()
+		}
+		return nil
+	})
+	o.output(O2IDisconnect{TunnelID: tunnelID, ID: sessionID})
 }
 
 func (s *outletSession) stopInput() {

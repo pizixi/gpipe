@@ -90,10 +90,9 @@ func (w *UDPWriter) Close() error {
 
 // CloseLater 与 Rust 中 CloseDelayed 类似。
 func CloseLater(closer interface{ Close() error }, d time.Duration) {
-	go func() {
-		time.Sleep(d)
+	time.AfterFunc(d, func() {
 		_ = closer.Close()
-	}()
+	})
 }
 
 func writeAllStream(conn net.Conn, data []byte) error {

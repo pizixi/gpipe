@@ -16,6 +16,11 @@ import (
 const proxyAuthRequiredResponse = "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"Proxy\"\r\n\r\n"
 const badGatewayHeader = "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n"
 
+const (
+	httpMaxHeaderBytes          = 64 * 1024
+	httpMaxBufferedPayloadBytes = 512 * 1024
+)
+
 type httpStatus int
 
 const (
@@ -29,6 +34,8 @@ const (
 type HTTPContext struct {
 	status          atomic.Int32
 	cache           []byte
+	pending         [][]byte
+	pendingBytes    int
 	writer          PeerWriter
 	peerAddr        net.Addr
 	data            *ContextData
@@ -53,6 +60,12 @@ func (c *HTTPContext) OnPeerData(data *ContextData, payload []byte) error {
 	case httpStatusFree:
 		c.cache = append(c.cache, payload...)
 		headerEnd := bytes.Index(c.cache, []byte("\r\n\r\n"))
+		if headerEnd < 0 && len(c.cache) > httpMaxHeaderBytes {
+			return fmt.Errorf("http proxy request header too large")
+		}
+		if headerEnd >= 0 && headerEnd+4 > httpMaxHeaderBytes {
+			return fmt.Errorf("http proxy request header too large")
+		}
 		if headerEnd < 0 {
 			return nil
 		}
@@ -93,6 +106,9 @@ func (c *HTTPContext) OnPeerData(data *ContextData, payload []byte) error {
 			}
 			c.cache = out.Bytes()
 		}
+		if len(c.cache) > httpMaxBufferedPayloadBytes {
+			return fmt.Errorf("http proxy initial payload too large")
+		}
 
 		data.output(I2OConnect{
 			TunnelID:         data.tunnelID,
@@ -105,12 +121,10 @@ func (c *HTTPContext) OnPeerData(data *ContextData, payload []byte) error {
 			EncryptionKey:    EncodeKeyToBase64(data.common.Key),
 			ClientAddr:       c.peerAddr.String(),
 		})
+	case httpStatusConnecting:
+		return c.bufferPendingPayload(payload)
 	case httpStatusRunning:
-		encoded, err := data.common.EncodeDataAndLimit(payload)
-		if err != nil {
-			return err
-		}
-		data.output(I2OSendData{TunnelID: data.tunnelID, ID: data.SessionID(), Data: encoded})
+		return c.sendUpstreamPayload(payload)
 	}
 	return nil
 }
@@ -121,15 +135,17 @@ func (c *HTTPContext) OnProxyMessage(message ProxyMessage) error {
 		if msg.Success {
 			c.status.Store(int32(httpStatusRunning))
 			if c.isConnectMethod {
-				return c.writer.Write(c.cache, nil)
+				if err := c.writer.Write(c.cache, nil); err != nil {
+					return err
+				}
+				c.cache = nil
+				return c.flushPendingPayloads()
 			}
-			encoded, err := c.data.common.EncodeDataAndLimit(c.cache)
-			if err != nil {
+			if err := c.sendUpstreamPayload(c.cache); err != nil {
 				return err
 			}
-			c.data.output(I2OSendData{TunnelID: c.data.tunnelID, ID: c.data.SessionID(), Data: encoded})
 			c.cache = nil
-			return nil
+			return c.flushPendingPayloads()
 		}
 		c.status.Store(int32(httpStatusInvalid))
 		body := fmt.Sprintf("<html><body><h1>502 Bad Gateway</h1><p>Proxy connection failed: %s</p></body></html>", msg.ErrorInfo)
@@ -227,4 +243,39 @@ func resolveProxyTarget(req *http.Request) (string, string, error) {
 		return "", "", fmt.Errorf("parse http host error")
 	}
 	return host, port, nil
+}
+
+func (c *HTTPContext) sendUpstreamPayload(payload []byte) error {
+	if len(payload) == 0 || c.data == nil {
+		return nil
+	}
+	encoded, err := c.data.common.EncodeDataAndLimit(payload)
+	if err != nil {
+		return err
+	}
+	c.data.output(I2OSendData{TunnelID: c.data.tunnelID, ID: c.data.SessionID(), Data: encoded})
+	return nil
+}
+
+func (c *HTTPContext) bufferPendingPayload(payload []byte) error {
+	if len(payload) == 0 {
+		return nil
+	}
+	if c.pendingBytes+len(payload) > httpMaxBufferedPayloadBytes {
+		return fmt.Errorf("http proxy buffered payload too large")
+	}
+	c.pending = append(c.pending, append([]byte(nil), payload...))
+	c.pendingBytes += len(payload)
+	return nil
+}
+
+func (c *HTTPContext) flushPendingPayloads() error {
+	for _, payload := range c.pending {
+		if err := c.sendUpstreamPayload(payload); err != nil {
+			return err
+		}
+	}
+	c.pending = nil
+	c.pendingBytes = 0
+	return nil
 }

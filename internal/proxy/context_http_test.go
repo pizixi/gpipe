@@ -145,3 +145,57 @@ func TestHTTPContextConnectWritesEstablishedResponse(t *testing.T) {
 		t.Fatalf("expected CONNECT established response, got %q", string(response))
 	}
 }
+
+func TestHTTPContextBuffersPayloadWhileConnecting(t *testing.T) {
+	var outputs []ProxyMessage
+	ctxData := NewContextData(
+		11,
+		TunnelModeHTTP,
+		"",
+		func(msg ProxyMessage) {
+			outputs = append(outputs, msg)
+		},
+		NewSessionCommonInfo(false, ParseEncryptionMethod("None"), nil),
+		InletAuthData{},
+	)
+	ctxData.SetSessionID(12)
+
+	writer := &testPeerWriter{}
+	ctx := NewHTTPContext()
+	if err := ctx.OnStart(ctxData, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 5678}, writer); err != nil {
+		t.Fatalf("OnStart failed: %v", err)
+	}
+
+	request := "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n"
+	if err := ctx.OnPeerData(ctxData, []byte(request)); err != nil {
+		t.Fatalf("OnPeerData request failed: %v", err)
+	}
+	if err := ctx.OnPeerData(ctxData, []byte("client-hello")); err != nil {
+		t.Fatalf("OnPeerData buffered payload failed: %v", err)
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("expected only connect output before ack, got %d", len(outputs))
+	}
+
+	if err := ctx.OnProxyMessage(O2IConnect{TunnelID: 11, ID: 12, Success: true}); err != nil {
+		t.Fatalf("OnProxyMessage failed: %v", err)
+	}
+	if len(outputs) != 2 {
+		t.Fatalf("expected buffered payload to flush after ack, got %d outputs", len(outputs))
+	}
+	send, ok := outputs[1].(I2OSendData)
+	if !ok {
+		t.Fatalf("expected I2OSendData, got %T", outputs[1])
+	}
+	decoded, err := ctxData.common.DecodeData(send.Data)
+	if err != nil {
+		t.Fatalf("DecodeData failed: %v", err)
+	}
+	if string(decoded) != "client-hello" {
+		t.Fatalf("decoded buffered payload = %q, want %q", string(decoded), "client-hello")
+	}
+	response := writer.lastWrite()
+	if !bytes.Contains(response, []byte("200 Connection Established")) {
+		t.Fatalf("expected CONNECT established response, got %q", string(response))
+	}
+}
