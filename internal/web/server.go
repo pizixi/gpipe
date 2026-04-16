@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +28,8 @@ import (
 )
 
 const authCookieName = "auth-id"
-const authCookieTTL = 60 * time.Minute
+const authCookieTTL = 7 * 24 * time.Hour
+const authCookieRefreshThreshold = 24 * time.Hour
 const maxJSONBodyBytes int64 = 1 << 20
 
 const webIndexTemplateName = "layout/page"
@@ -110,6 +112,12 @@ func newWebUIHandler(webFS fs.FS, reloadTemplates bool) http.Handler {
 			if !strings.HasPrefix(r.URL.Path, "/api") {
 				cleanPath := strings.TrimPrefix(r.URL.Path, "/")
 				if _, err := fs.Stat(webFS, cleanPath); err != nil {
+					// Missing asset-like paths should stay 404 instead of falling back to index.html,
+					// otherwise browsers may cache HTML as JS/CSS/favicon responses.
+					if path.Ext(cleanPath) != "" {
+						http.NotFound(w, r)
+						return
+					}
 					serveIndexHTML(w, r, webFS, cachedTemplate, cachedTemplateErr, reloadTemplates)
 					return
 				}
@@ -197,16 +205,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.WebUsername == req.Username && s.cfg.WebPassword == req.Password && req.Username != "" {
-		expiresAt := time.Now().Add(authCookieTTL)
-		value := s.signedCookieValue(expiresAt)
-		http.SetCookie(w, &http.Cookie{
-			Name:     authCookieName,
-			Value:    value,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Expires:  expiresAt,
-		})
+		s.issueAuthCookie(w)
 		writeJSON(w, http.StatusOK, GeneralResponse{Code: 0, Msg: "Success"})
 		return
 	}
@@ -214,19 +213,12 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) logout(w http.ResponseWriter, _ *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     authCookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
+	s.clearAuthCookie(w)
 	writeJSON(w, http.StatusOK, GeneralResponse{Code: 10086, Msg: "Session expired, please log in again."})
 }
 
 func (s *Service) testAuth(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.authenticated(r)
+	id, ok := s.authenticateAndRefresh(w, r)
 	if !ok {
 		writeJSON(w, http.StatusOK, GeneralResponse{Code: 10086, Msg: "Session expired, please log in again."})
 		return
@@ -570,6 +562,31 @@ func (s *Service) signedCookieValue(expiresAt time.Time) string {
 	return expiresUnix + "." + base64.RawURLEncoding.EncodeToString(signature)
 }
 
+func (s *Service) issueAuthCookie(w http.ResponseWriter) {
+	expiresAt := time.Now().Add(authCookieTTL)
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCookieName,
+		Value:    s.signedCookieValue(expiresAt),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  expiresAt,
+		MaxAge:   int(authCookieTTL / time.Second),
+	})
+}
+
+func (s *Service) clearAuthCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     authCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+	})
+}
+
 func (s *Service) cookieSignature(expiresUnix string) []byte {
 	mac := hmac.New(sha256.New, s.cookieSecret)
 	_, _ = mac.Write([]byte(s.cfg.WebUsername))
@@ -578,35 +595,47 @@ func (s *Service) cookieSignature(expiresUnix string) []byte {
 	return mac.Sum(nil)
 }
 
-func (s *Service) authenticated(r *http.Request) (string, bool) {
+func (s *Service) authenticated(r *http.Request) (string, time.Time, bool) {
 	cookie, err := r.Cookie(authCookieName)
 	if err != nil {
-		return "", false
+		return "", time.Time{}, false
 	}
 	parts := strings.Split(cookie.Value, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", false
+		return "", time.Time{}, false
 	}
 	expiresUnix, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return "", false
+		return "", time.Time{}, false
 	}
-	if time.Now().After(time.Unix(expiresUnix, 0)) {
-		return "", false
+	expiresAt := time.Unix(expiresUnix, 0)
+	if time.Now().After(expiresAt) {
+		return "", time.Time{}, false
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return "", false
+		return "", time.Time{}, false
 	}
 	expected := s.cookieSignature(parts[0])
 	if subtle.ConstantTimeCompare(signature, expected) != 1 {
+		return "", time.Time{}, false
+	}
+	return s.cfg.WebUsername, expiresAt, true
+}
+
+func (s *Service) authenticateAndRefresh(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id, expiresAt, ok := s.authenticated(r)
+	if !ok {
 		return "", false
 	}
-	return s.cfg.WebUsername, true
+	if time.Until(expiresAt) <= authCookieRefreshThreshold {
+		s.issueAuthCookie(w)
+	}
+	return id, true
 }
 
 func (s *Service) requireAuth(w http.ResponseWriter, r *http.Request) bool {
-	if _, ok := s.authenticated(r); ok {
+	if _, ok := s.authenticateAndRefresh(w, r); ok {
 		return true
 	}
 	writeJSON(w, http.StatusOK, GeneralResponse{Code: 10086, Msg: "Session expired, please log in again."})

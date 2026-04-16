@@ -1,6 +1,6 @@
 # gpipe
 
-`gpipe` 是对当前 Rust `npipe` 项目的 Go 重构版本，目标是在业务逻辑上尽量与原项目保持一致，并提供可独立构建、运行和部署的 Go 实现。
+`gpipe` 是对 Rust `npipe` 项目的 Go 重构版本，目标是在业务逻辑上尽量与原项目保持一致，并提供可独立构建、运行和部署的 Go 实现。
 
 当前版本已经包含控制面、Web 管理端、隧道同步、代理转发、`TCP / WS / QUIC / KCP` 传输、`TCP / UDP / SOCKS5 / HTTP` 代理类型，以及基于纯 Go SQLite 驱动的服务端存储实现。
 
@@ -93,11 +93,15 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
 
 这个脚本会：
 
-- 构建服务端二进制到 `release/bin/`
+- 先构建前端到 `webui/dist/`
+- 把前端静态资源一并嵌入随后生成的服务端二进制；包括 `favicon.ico` 在内的页面资源都会随二进制发布
+- 构建服务端二进制到 `release/gpipe-server.exe`（Linux 下为 `release/gpipe-server`）
 - 构建客户端模板到 `release/client-templates/`
 - 复制并规范化 `release/gpipe.json`
 - 创建 `release/client-cache/`、`release/logs/`、`release/gpipe.db`
 - 如果仓库里存在 `certs/`，自动复制到发布目录
+
+如果你修改过前端页面、图标、CSS、JS 等静态资源，不要加 `-SkipFrontend`；否则会沿用上一次的 `webui/dist` 构建结果，新的 `favicon.ico` 不会进入本次服务端二进制。
 
 Linux 交叉构建客户端示例：
 
@@ -110,7 +114,7 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
 ## 服务端运行
 
 ```powershell
-.\bin\gpipe-server.exe -config-file .\gpipe.json
+.\gpipe-server.exe -config-file .\gpipe.json
 ```
 
 默认配置文件名已经调整为 `gpipe.json`。为了兼容旧部署，如果你没有显式传 `-config-file`，且当前目录只有旧文件名 `config.json`，服务端仍会自动回退读取它。
@@ -138,22 +142,22 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
 
 配置项说明：
 
-| 配置项                    | 说明                                                              |
-| ------------------------- | ----------------------------------------------------------------- |
-| `database_url`            | 数据库地址，目前只支持 SQLite，示例：`sqlite://gpipe.db?mode=rwc` |
-| `listen_addr`             | 服务监听地址，多个地址用英文逗号分隔                              |
-| `illegal_traffic_forward` | 非 `npipe` 协议流量转发目标，例如 `127.0.0.1:80`                  |
-| `enable_tls`              | 是否为客户端 `<->` 服务端传输链路启用 TLS                         |
-| `tls_cert`                | TLS 证书路径                                                      |
-| `tls_key`                 | TLS 私钥路径                                                      |
-| `web_base_dir`            | 可选磁盘静态资源目录；为空或目录不存在时回退到二进制内置的页面    |
-| `web_addr`                | Web 管理端监听地址                                                |
-| `web_username`            | Web 管理账号，留空则关闭 Web 管理                                 |
-| `web_password`            | Web 管理密码，留空则关闭 Web 管理                                 |
-| `client_template_dir`     | 可选的客户端模板目录；存在目标模板时，下载玩家客户端不需要 Go 环境 |
-| `client_artifact_cache_dir` | 可选的客户端下载缓存目录；缓存已补丁好的玩家专属二进制          |
-| `quiet`                   | 是否静默运行                                                      |
-| `log_dir`                 | 日志目录                                                          |
+| 配置项                      | 说明                                                               |
+| --------------------------- | ------------------------------------------------------------------ |
+| `database_url`              | 数据库地址，目前只支持 SQLite，示例：`sqlite://gpipe.db?mode=rwc`  |
+| `listen_addr`               | 服务监听地址，多个地址用英文逗号分隔                               |
+| `illegal_traffic_forward`   | 非 `npipe` 协议流量转发目标，例如 `127.0.0.1:80`                   |
+| `enable_tls`                | 是否为客户端 `<->` 服务端传输链路启用 TLS                          |
+| `tls_cert`                  | TLS 证书路径                                                       |
+| `tls_key`                   | TLS 私钥路径                                                       |
+| `web_base_dir`              | 可选磁盘静态资源目录；为空或目录不存在时回退到二进制内置的页面     |
+| `web_addr`                  | Web 管理端监听地址                                                 |
+| `web_username`              | Web 管理账号，留空则关闭 Web 管理                                  |
+| `web_password`              | Web 管理密码，留空则关闭 Web 管理                                  |
+| `client_template_dir`       | 可选的客户端模板目录；存在目标模板时，下载玩家客户端不需要 Go 环境 |
+| `client_artifact_cache_dir` | 可选的客户端下载缓存目录；缓存已补丁好的玩家专属二进制             |
+| `quiet`                     | 是否静默运行                                                       |
+| `log_dir`                   | 日志目录                                                           |
 
 ## 纯发布版客户端下载
 
@@ -181,6 +185,7 @@ Web 后台“生成客户端”现在支持两种工作模式：
 
 ```text
 release/
+  gpipe-server.exe
   gpipe.json
   gpipe.db
   logs/
@@ -194,8 +199,6 @@ release/
   certs/
     cert.pem
     server.key.pem
-  bin/
-    gpipe-server.exe
 ```
 
 说明：
@@ -203,7 +206,7 @@ release/
 - `client-templates/` 是纯发布版环境里网页“生成客户端”功能的关键目录
 - `client-cache/` 可以预先创建，也可以让服务端首次运行时自动创建
 - `certs/` 只有在 `enable_tls=true` 时才需要
-- 如果是 Linux 发布，把 `bin/gpipe-server.exe` 换成 Linux 对应可执行文件名即可
+- 如果是 Linux 发布，把根目录下的 `gpipe-server.exe` 换成对应的 `gpipe-server` 文件名即可
 
 ## 客户端运行
 
@@ -395,16 +398,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1
 - 通过 Web API 创建测试用户
 - 启动 Go 客户端并验证登录成功
 
-## 兼容性说明
-
-当前 Go 版实现以对齐 Rust 版业务逻辑为目标，已完成主要控制面和代理面功能，但“100% 等价”仍然应以实际联调结果为准，尤其包括：
-
-- Go 与 Rust 的交叉互通验证
-- 不同系统下的服务安装与启停行为
-- 各代理类型在复杂场景下的长时间稳定性验证
-
 ## 备注
 
 - 服务端数据库驱动为纯 Go 实现，不依赖 CGO
-- 协议外层帧格式与消息映射按 Rust 版本对齐实现
-- 管理端 API 路径保持与 Rust 服务端一致

@@ -72,15 +72,21 @@ func TestLoginIssuesSignedCookieAcceptedByAuthCheck(t *testing.T) {
 	if !strings.Contains(cookie.Value, ".") {
 		t.Fatalf("expected signed cookie value")
 	}
+	if cookie.MaxAge != int(authCookieTTL/time.Second) {
+		t.Fatalf("cookie max age = %d, want %d", cookie.MaxAge, int(authCookieTTL/time.Second))
+	}
 
 	authReq := httptest.NewRequest(http.MethodGet, "/api/test_auth", nil)
 	authReq.AddCookie(cookie)
-	id, ok := service.authenticated(authReq)
+	id, expiresAt, ok := service.authenticated(authReq)
 	if !ok {
 		t.Fatalf("expected signed cookie to authenticate")
 	}
 	if id != "admin" {
 		t.Fatalf("authenticated id = %q, want %q", id, "admin")
+	}
+	if time.Until(expiresAt) < 6*24*time.Hour {
+		t.Fatalf("cookie lifetime too short, expires at %v", expiresAt)
 	}
 }
 
@@ -99,7 +105,7 @@ func TestAuthenticatedRejectsTamperedOrExpiredCookie(t *testing.T) {
 		Name:  authCookieName,
 		Value: validCookie.Value + "tampered",
 	})
-	if _, ok := service.authenticated(tamperedReq); ok {
+	if _, _, ok := service.authenticated(tamperedReq); ok {
 		t.Fatalf("expected tampered cookie to be rejected")
 	}
 
@@ -108,8 +114,41 @@ func TestAuthenticatedRejectsTamperedOrExpiredCookie(t *testing.T) {
 		Name:  authCookieName,
 		Value: service.signedCookieValue(time.Now().Add(-time.Minute)),
 	})
-	if _, ok := service.authenticated(expiredReq); ok {
+	if _, _, ok := service.authenticated(expiredReq); ok {
 		t.Fatalf("expected expired cookie to be rejected")
+	}
+}
+
+func TestTestAuthRefreshesCookieNearExpiry(t *testing.T) {
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin",
+		WebPassword: "secret",
+	}, nil)
+
+	nearExpiry := time.Now().Add(30 * time.Minute)
+	req := httptest.NewRequest(http.MethodGet, "/api/test_auth", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(nearExpiry),
+	})
+	recorder := httptest.NewRecorder()
+
+	service.testAuth(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	resp := recorder.Result()
+	cookies := resp.Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("expected refreshed auth cookie, got %d", len(cookies))
+	}
+	refreshed := cookies[0]
+	if refreshed.Expires.Before(time.Now().Add(6 * 24 * time.Hour)) {
+		t.Fatalf("refreshed cookie expires too soon: %v", refreshed.Expires)
+	}
+	if refreshed.MaxAge != int(authCookieTTL/time.Second) {
+		t.Fatalf("refreshed cookie max age = %d, want %d", refreshed.MaxAge, int(authCookieTTL/time.Second))
 	}
 }
 
@@ -182,6 +221,29 @@ func TestHandlerPrefersDiskStaticFilesWhenWebBaseDirExists(t *testing.T) {
 	}
 	if body := recorder.Body.String(); !strings.Contains(body, "custom-index") {
 		t.Fatalf("expected disk index html to be served, got %q", body)
+	}
+}
+
+func TestHandlerReturnsNotFoundForMissingStaticAsset(t *testing.T) {
+	dir := t.TempDir()
+	indexPath := filepath.Join(dir, "index.html")
+	if err := os.WriteFile(indexPath, []byte("custom-index"), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+
+	handler := NewService(&config.ServerConfig{
+		WebBaseDir: dir,
+	}, nil).Handler()
+
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+	if strings.Contains(recorder.Body.String(), "custom-index") {
+		t.Fatalf("missing asset should not fall back to index html")
 	}
 }
 
