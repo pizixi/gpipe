@@ -3,7 +3,7 @@ package gpipe
 import "embed"
 
 // EmbeddedWebFS keeps the default web UI directory inside the server binary.
-// After the React frontend migration, static assets are built to webui/dist/.
+// React static assets are built to frontend/dist/.
 //
-//go:embed webui
+//go:embed frontend/dist
 var EmbeddedWebFS embed.FS

@@ -108,7 +108,7 @@ function Invoke-FrontendBuild([string]$FrontendDir) {
             }
         }
 
-        Write-Host "Building frontend -> webui/dist"
+        Write-Host "Building frontend -> frontend/dist"
         & $npmPath "run" "build"
         if ($LASTEXITCODE -ne 0) {
             throw "npm run build failed"

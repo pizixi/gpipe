@@ -27,6 +27,7 @@ client-cache/
 
 # Frontend
 frontend/node_modules/
+frontend/dist/
 webui/dist/
 
 # Runtime data

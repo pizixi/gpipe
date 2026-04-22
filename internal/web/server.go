@@ -81,17 +81,13 @@ func (s *Service) staticHandler() http.Handler {
 			return newWebUIHandler(os.DirFS(s.cfg.WebBaseDir), true)
 		}
 	}
-	// Try the new React SPA build output (webui/dist/) first, fall back to webui/.
-	if subFS, err := fs.Sub(gpipe.EmbeddedWebFS, "webui/dist"); err == nil {
+	// Serve the embedded React SPA build output.
+	if subFS, err := fs.Sub(gpipe.EmbeddedWebFS, "frontend/dist"); err == nil {
 		if _, statErr := fs.Stat(subFS, "index.html"); statErr == nil {
 			return newWebUIHandler(subFS, false)
 		}
 	}
-	subFS, err := fs.Sub(gpipe.EmbeddedWebFS, "webui")
-	if err != nil {
-		return http.NotFoundHandler()
-	}
-	return newWebUIHandler(subFS, false)
+	return http.NotFoundHandler()
 }
 
 func newWebUIHandler(webFS fs.FS, reloadTemplates bool) http.Handler {

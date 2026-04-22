@@ -22,7 +22,7 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: '../webui/dist',
+    outDir: 'dist',
     emptyOutDir: true,
     rollupOptions: {
       output: {

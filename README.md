@@ -18,7 +18,7 @@
 - `internal/db`：SQLite 初始化与迁移
 - `internal/web`：管理后台 HTTP API
 - `scripts/build-release.ps1`：一键生成发布目录
-- `webui/`：默认管理端静态资源目录，首页由 Go `html/template` 模板渲染，构建时会整体打进服务端二进制
+- `frontend/`：React 管理端源码，构建产物输出到 `frontend/dist` 并打进服务端二进制
 - `scripts/build-client-templates.ps1`：预构建客户端下载模板
 - `scripts/smoke.ps1`：本地最小链路验证脚本
 
@@ -75,7 +75,7 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
 
 说明：
 
-- `webui/` 已内置进服务端二进制，发布时不需要再额外携带这个目录
+- `frontend/dist` 已内置进服务端二进制，发布时不需要再额外携带这个目录
 - 如果设置了 `web_base_dir` 且目录存在，服务端会优先使用磁盘目录中的静态文件；目录里既可以放完整 `index.html`，也可以放 `templates/` 目录让首页走模板渲染
 - `client-templates/` 可通过 `.\scripts\build-client-templates.ps1` 预先构建；服务端下载玩家客户端时会优先使用这些模板，并把玩家密钥和连接参数直接补丁进二进制
 
@@ -93,7 +93,7 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
 
 这个脚本会：
 
-- 先构建前端到 `webui/dist/`
+- 先构建前端到 `frontend/dist/`
 - 把前端静态资源一并嵌入随后生成的服务端二进制；包括 `favicon.ico` 在内的页面资源都会随二进制发布
 - 构建服务端二进制到 `release/gpipe-server.exe`（Linux 下为 `release/gpipe-server`）
 - 构建客户端模板到 `release/client-templates/`
@@ -101,7 +101,7 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
 - 创建 `release/client-cache/`、`release/logs/`、`release/gpipe.db`
 - 如果仓库里存在 `certs/`，自动复制到发布目录
 
-如果你修改过前端页面、图标、CSS、JS 等静态资源，不要加 `-SkipFrontend`；否则会沿用上一次的 `webui/dist` 构建结果，新的 `favicon.ico` 不会进入本次服务端二进制。
+如果你修改过前端页面、图标、CSS、JS 等静态资源，不要加 `-SkipFrontend`；否则会沿用上一次的 `frontend/dist` 构建结果，新的 `favicon.ico` 不会进入本次服务端二进制。
 
 Linux 交叉构建客户端示例：
 
@@ -394,7 +394,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1
 
 - 生成临时 `gpipe.json`
 - 启动 Go 服务端
-- 校验在 `web_base_dir=""` 时首页和静态资源会返回内置 `webui/` 内容
+- 校验在 `web_base_dir=""` 时首页和静态资源会返回内置 `frontend/dist` 内容
 - 通过 Web API 创建测试用户
 - 启动 Go 客户端并验证登录成功
 
