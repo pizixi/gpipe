@@ -149,6 +149,7 @@
 .dashboard-data-table .table-chip {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   max-width: 100%;
   padding: 3px 10px;
   border-radius: 999px;
@@ -166,11 +167,27 @@
   text-overflow: ellipsis;
 }
 
+.dashboard-data-table .table-chip-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--chip-icon-color);
+}
+
+.dashboard-data-table .table-chip-status-icon .anticon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 .dashboard-data-table .table-chip--online {
   --chip-color: #0f766e;
   --chip-border: #a7f3d0;
   --chip-bg-start: #f3fffb;
   --chip-bg-end: #dffaf0;
+  --chip-icon-color: #059669;
 }
 
 .dashboard-data-table .table-chip--offline {
@@ -178,6 +195,7 @@
   --chip-border: #d8e1ea;
   --chip-bg-start: #ffffff;
   --chip-bg-end: #f4f7fa;
+  --chip-icon-color: #64748b;
 }
 
 .dashboard-data-table .table-chip--unknown {
@@ -185,6 +203,25 @@
   --chip-border: #cbd5e1;
   --chip-bg-start: #f8fafc;
   --chip-bg-end: #e2e8f0;
+  --chip-icon-color: #475569;
+}
+
+.dashboard-data-table .player-remark {
+  font-weight: 600;
+}
+
+.dashboard-data-table .player-remark--online {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.dashboard-data-table .player-remark--offline {
+  color: #64748b;
+}
+
+.dashboard-data-table .player-remark--empty {
+  color: #94a3b8;
+  font-weight: 400;
 }
 
 .dashboard-data-table .protocol-badge {
@@ -250,10 +287,10 @@
 }
 
 .dashboard-data-table .status-pill--online {
-  --status-color: #0f766e;
-  --status-border: #a7f3d0;
-  --status-bg-start: #f3fffb;
-  --status-bg-end: #dffaf0;
+  --status-color: #ffffff;
+  --status-border: #16a34a;
+  --status-bg-start: #22c55e;
+  --status-bg-end: #16a34a;
 }
 
 .dashboard-data-table .status-pill--offline {
@@ -271,10 +308,10 @@
 }
 
 .dashboard-data-table .status-pill--disabled {
-  --status-color: #b45309;
-  --status-border: #f7d58b;
-  --status-bg-start: #fffaf3;
-  --status-bg-end: #ffedd8;
+  --status-color: #64748b;
+  --status-border: #cbd5e1;
+  --status-bg-start: #ffffff;
+  --status-bg-end: #f1f5f9;
 }
 
 .dashboard-data-table .table-action-group {

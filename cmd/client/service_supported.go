@@ -138,8 +138,10 @@ func buildServiceArgSlice(common commonArgs) []string {
 		fmt.Sprintf("--key=%s", common.Key),
 		fmt.Sprintf("--log-level=%s", common.LogLevel),
 		fmt.Sprintf("--base-log-level=%s", common.BaseLogLevel),
-		fmt.Sprintf("--log-dir=%s", common.LogDir),
 		fmt.Sprintf("--tls-server-name=%s", common.TLSServerName),
+	}
+	if common.LogDir != "" {
+		args = append(args, fmt.Sprintf("--log-dir=%s", common.LogDir))
 	}
 	if common.EnableTLS {
 		args = append(args, "--enable-tls")

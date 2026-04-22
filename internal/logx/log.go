@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const loggerFlags = log.LstdFlags | log.Lshortfile
@@ -12,6 +13,10 @@ const loggerFlags = log.LstdFlags | log.Lshortfile
 func New(quiet bool, logDir string, name string) (*log.Logger, io.Closer, error) {
 	if quiet {
 		return log.New(io.Discard, "", loggerFlags), io.NopCloser(nil), nil
+	}
+
+	if strings.TrimSpace(logDir) == "" {
+		return log.New(os.Stdout, "", loggerFlags), io.NopCloser(nil), nil
 	}
 
 	if err := os.MkdirAll(logDir, 0o755); err != nil {

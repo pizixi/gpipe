@@ -29,6 +29,5 @@ func embeddedCommonArgs() (commonArgs, bool, error) {
 		SSPassword:    config.SSPassword,
 		LogLevel:      "info",
 		BaseLogLevel:  "error",
-		LogDir:        "logs",
 	}, true, nil
 }

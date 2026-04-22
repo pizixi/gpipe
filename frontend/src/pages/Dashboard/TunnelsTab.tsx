@@ -8,6 +8,9 @@ import {
   PauseCircleOutlined,
   SearchOutlined,
   SwapRightOutlined,
+  WifiOutlined,
+  DisconnectOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +40,25 @@ interface Props {
 }
 
 type PlayerChipVariant = 'online' | 'offline' | 'unknown';
+
+interface PlayerMeta {
+  label: string;
+  variant: PlayerChipVariant;
+  tooltip: string;
+}
+
+const renderPlayerStatusIcon = (variant: PlayerChipVariant) => {
+  switch (variant) {
+    case 'online':
+      return <WifiOutlined />;
+    case 'offline':
+      return <DisconnectOutlined />;
+    case 'unknown':
+      return <QuestionCircleOutlined />;
+    default:
+      return null;
+  }
+};
 
 const ProtocolIcon: React.FC<{ type: number }> = ({ type }) => {
   switch (type) {
@@ -108,7 +130,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     loadTunnels();
   }, [loadTunnels]);
 
-  const getPlayerMeta = (id: number): { label: string; variant: PlayerChipVariant; tooltip: string } => {
+  const getPlayerMeta = (id: number): PlayerMeta => {
     if (id === 0) {
       const label = t('server_side');
       return { label, variant: 'online', tooltip: `${label} · ${t('online')}` };
@@ -229,22 +251,27 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
   const tableScrollY = tableRegionHeight > tableBodyOffset ? tableRegionHeight - tableBodyOffset : undefined;
   const fixActionColumn = !!screens.md;
 
+  const renderPlayerChip = (value: number) => {
+    const meta = getPlayerMeta(value);
+    return (
+      <Tooltip title={meta.tooltip}>
+        <span className={`table-chip table-chip--${meta.variant}`}>
+          <span className={`table-chip-status-icon table-chip-status-icon--${meta.variant}`} aria-hidden="true">
+            {renderPlayerStatusIcon(meta.variant)}
+          </span>
+          <span className="table-chip-text">{meta.label}</span>
+        </span>
+      </Tooltip>
+    );
+  };
+
   const columns: ColumnsType<TunnelListItem> = [
     {
       title: t('receiver_id'),
       dataIndex: 'receiver',
       sorter: (a, b) => a.receiver - b.receiver,
       width: 240,
-      render: (value: number) => {
-        const meta = getPlayerMeta(value);
-        return (
-          <Tooltip title={meta.tooltip}>
-            <span className={`table-chip table-chip--${meta.variant}`}>
-              <span className="table-chip-text">{meta.label}</span>
-            </span>
-          </Tooltip>
-        );
-      },
+      render: renderPlayerChip,
     },
     {
       title: t('source'),
@@ -269,16 +296,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       dataIndex: 'sender',
       sorter: (a, b) => a.sender - b.sender,
       width: 240,
-      render: (value: number) => {
-        const meta = getPlayerMeta(value);
-        return (
-          <Tooltip title={meta.tooltip}>
-            <span className={`table-chip table-chip--${meta.variant}`}>
-              <span className="table-chip-text">{meta.label}</span>
-            </span>
-          </Tooltip>
-        );
-      },
+      render: renderPlayerChip,
     },
     {
       title: t('target_tab_title'),

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -236,6 +237,30 @@ func TestValidateStreamDialServerList(t *testing.T) {
 	err := ValidateStreamDialServerList("tcp://127.0.0.1:8118,quic://127.0.0.1:8119")
 	if err == nil || !strings.Contains(err.Error(), "quic:// is not supported") {
 		t.Fatalf("err = %v, want unsupported scheme", err)
+	}
+}
+
+func TestSanitizeClientLogErrorRedactsConnectionDetails(t *testing.T) {
+	err := fmt.Errorf(
+		"connect failed: dial tcp 192.168.1.10:8118: refused; websocket ws://server.example.com:8119/path?key=secret; lookup hidden.example.com: no such host; connect shadowsocks server ss.example.com:8388",
+	)
+
+	got := sanitizeClientLogError(err)
+	for _, forbidden := range []string{
+		"192.168.1.10",
+		"8118",
+		"server.example.com",
+		"hidden.example.com",
+		"key=secret",
+		"ss.example.com",
+		"8388",
+	} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("sanitized error %q still contains %q", got, forbidden)
+		}
+	}
+	if !strings.Contains(got, "<addr>") || !strings.Contains(got, "ws://<redacted>") {
+		t.Fatalf("sanitized error = %q, want redacted address and URL", got)
 	}
 }
 

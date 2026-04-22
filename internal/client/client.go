@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,6 +28,12 @@ var tlsHandshakeTimeout = 15 * time.Second
 var connectTimeout = 10 * time.Second
 
 const readCacheCompactThreshold = 256 * 1024
+
+var (
+	logURLPattern      = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*)://[^\s,;]+`)
+	logLookupPattern   = regexp.MustCompile(`\blookup\s+[^:\s]+`)
+	logHostPortPattern = regexp.MustCompile(`\b(?:\[[0-9a-fA-F:.]+\]|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z0-9-]+|[a-zA-Z0-9-]+|\d{1,3}(?:\.\d{1,3}){3}):\d{1,5}\b`)
+)
 
 type Options struct {
 	Server        string
@@ -87,11 +94,11 @@ func (a *App) RunContext(ctx context.Context) error {
 			}
 			u, err := url.Parse(raw)
 			if err != nil {
-				a.opts.Logger.Printf("skip invalid server uri %q: %v", raw, err)
+				a.opts.Logger.Printf("skip invalid server uri")
 				continue
 			}
 			if err := a.runOne(ctx, u); err != nil {
-				a.opts.Logger.Printf("client run error: %v", err)
+				a.opts.Logger.Printf("client run error: %s", sanitizeClientLogError(err))
 				select {
 				case <-ctx.Done():
 					return nil
@@ -455,6 +462,20 @@ func splitURIs(value string) []string {
 		}
 	}
 	return out
+}
+
+func sanitizeClientLogError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		return "unknown error"
+	}
+	message = logURLPattern.ReplaceAllString(message, `${1}://<redacted>`)
+	message = logLookupPattern.ReplaceAllString(message, "lookup <addr>")
+	message = logHostPortPattern.ReplaceAllString(message, "<addr>")
+	return message
 }
 
 func writeAll(conn net.Conn, data []byte) error {

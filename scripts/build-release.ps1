@@ -63,6 +63,14 @@ function Invoke-GoBuild([string]$GoOS, [string]$GoArch, [string]$OutputPath, [st
     }
 }
 
+function Get-ServerBinaryName([string]$GoOS, [string]$GoArch, [switch]$IncludeTargetSuffix) {
+    $extension = if ($GoOS -eq "windows") { ".exe" } else { "" }
+    if ($IncludeTargetSuffix) {
+        return "gpipe-server-$GoOS-$GoArch$extension"
+    }
+    return "gpipe-server$extension"
+}
+
 function Resolve-CommandPath([string[]]$Names) {
     foreach ($name in $Names) {
         $command = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -137,8 +145,9 @@ New-Item -ItemType Directory -Force -Path $binDir, $templateDir, $cacheDir, $log
 
 $targetGoOS = if ([string]::IsNullOrWhiteSpace($ServerGOOS)) { Get-GoEnvValue "GOHOSTOS" } else { $ServerGOOS.Trim() }
 $targetGoArch = if ([string]::IsNullOrWhiteSpace($ServerGOARCH)) { Get-GoEnvValue "GOHOSTARCH" } else { $ServerGOARCH.Trim() }
-$serverName = if ($targetGoOS -eq "windows") { "gpipe-server.exe" } else { "gpipe-server" }
+$serverName = Get-ServerBinaryName -GoOS $targetGoOS -GoArch $targetGoArch
 $serverOutputPath = Join-Path $binDir $serverName
+$linuxAmd64ServerOutputPath = Join-Path $binDir (Get-ServerBinaryName -GoOS "linux" -GoArch "amd64" -IncludeTargetSuffix)
 $frontendDir = Join-Path $repoRoot "frontend"
 
 Write-Host "Preparing release package -> $resolvedOutputDir"
@@ -152,6 +161,9 @@ try {
 
     Write-Host "Building server $targetGoOS/$targetGoArch -> $serverOutputPath"
     Invoke-GoBuild -GoOS $targetGoOS -GoArch $targetGoArch -OutputPath $serverOutputPath -PackagePath ".\cmd\server"
+
+    Write-Host "Building server linux/amd64 -> $linuxAmd64ServerOutputPath"
+    Invoke-GoBuild -GoOS "linux" -GoArch "amd64" -OutputPath $linuxAmd64ServerOutputPath -PackagePath ".\cmd\server"
 
     if (-not $SkipTemplates) {
         Write-Host "Building client templates -> $templateDir"

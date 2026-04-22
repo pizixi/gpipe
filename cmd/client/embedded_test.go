@@ -66,6 +66,9 @@ func TestParseCommonArgsUsesEmbeddedDefaultsAndAllowsOverrides(t *testing.T) {
 	if !common.EnableTLS || common.SSServer != "127.0.0.1:8388" {
 		t.Fatalf("expected embedded TLS and Shadowsocks defaults: %+v", common)
 	}
+	if common.LogDir != "" {
+		t.Fatalf("embedded log dir = %q, want empty default", common.LogDir)
+	}
 
 	override, err := parseCommonArgs([]string{"--server=ws://127.0.0.1:8119"})
 	if err != nil {

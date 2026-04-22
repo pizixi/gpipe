@@ -22,6 +22,17 @@ import StatusPill from '../../components/StatusPill';
 
 const tableBodyOffset = 56;
 
+const getCreateTimeMs = (value: string) => {
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
+const comparePlayersByDefault = (a: PlayerListItem, b: PlayerListItem) => (
+  Number(b.online) - Number(a.online)
+  || getCreateTimeMs(b.create_time) - getCreateTimeMs(a.create_time)
+  || b.id - a.id
+);
+
 interface Props {
   onOpenPlayerTunnels: (playerId: number) => void;
 }
@@ -58,6 +69,7 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
     const keyword = search.trim().toLowerCase();
     return String(player.id).includes(keyword) || (player.remark ?? '').toLowerCase().includes(keyword);
   });
+  const sortedPlayers = filtered.slice().sort(comparePlayersByDefault);
 
   const handleDelete = async (player: PlayerListItem) => {
     if (player.online) {
@@ -119,7 +131,16 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       dataIndex: 'remark',
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? '', 'zh-CN'),
       ellipsis: true,
-      render: (value: string) => value || <span style={{ color: '#999' }}>{t('not_set')}</span>,
+      render: (value: string, record) => {
+        if (!value) {
+          return <span className="player-remark player-remark--empty">{t('not_set')}</span>;
+        }
+        return (
+          <span className={`player-remark player-remark--${record.online ? 'online' : 'offline'}`}>
+            {value}
+          </span>
+        );
+      },
     },
     {
       title: t('online_status'),
@@ -184,7 +205,7 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
         <Table<PlayerListItem>
           className="dashboard-data-table"
           columns={columns}
-          dataSource={filtered}
+          dataSource={sortedPlayers}
           rowKey="id"
           size="middle"
           pagination={false}
