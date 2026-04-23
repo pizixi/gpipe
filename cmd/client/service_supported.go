@@ -77,18 +77,51 @@ func runServiceCommand(common commonArgs) error {
 	if err := validateCommonArgs(common); err != nil {
 		return err
 	}
-	svc, err := newService(common)
+	svc, err := newService(common, nil)
 	if err != nil {
 		return err
 	}
 	return svc.Run()
 }
 
-func installService(common commonArgs) error {
-	if err := validateCommonArgs(common); err != nil {
-		return err
+func installService(args []string) error {
+	// 如果用户在 install 命令中提供了自定义参数，则解析并校验，
+	// 然后将这些参数拼接到服务命令行中；否则服务启动时不带额外参数，
+	// 直接使用二进制内置的嵌入式配置。
+	var (
+		common     commonArgs
+		svcArgs    []string
+		hasCustom  = len(args) > 0
+	)
+
+	if hasCustom {
+		var err error
+		common, err = parseCommonArgs(args)
+		if err != nil {
+			return err
+		}
+		if err := validateCommonArgs(common); err != nil {
+			return err
+		}
+		svcArgs = buildServiceArgSlice(common)
+	} else {
+		// 无自定义参数：确认二进制内置了有效配置
+		embedded, ok, err := embeddedCommonArgs()
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("no embedded config found and no arguments provided; please provide --server and --key")
+		}
+		if err := validateCommonArgs(embedded); err != nil {
+			return fmt.Errorf("embedded config is invalid: %w", err)
+		}
+		// 服务启动时只传 run-service 子命令，不带额外参数
+		svcArgs = []string{"run-service"}
+		common = embedded
 	}
-	svc, err := newService(common)
+
+	svc, err := newService(common, svcArgs)
 	if err != nil {
 		return err
 	}
@@ -107,7 +140,7 @@ func installService(common commonArgs) error {
 }
 
 func uninstallService() error {
-	svc, err := newService(commonArgs{})
+	svc, err := newService(commonArgs{}, nil)
 	if err != nil {
 		return err
 	}
@@ -120,12 +153,17 @@ func uninstallService() error {
 	return nil
 }
 
-func newService(common commonArgs) (servicepkg.Service, error) {
+// newService 创建系统服务实例。
+// svcArgs 为注册到服务管理器的命令行参数列表；传 nil 时使用默认的参数构建逻辑。
+func newService(common commonArgs, svcArgs []string) (servicepkg.Service, error) {
+	if svcArgs == nil {
+		svcArgs = buildServiceArgSlice(common)
+	}
 	config := &servicepkg.Config{
 		Name:        serviceName,
 		DisplayName: serviceDisplayName,
 		Description: serviceDescription,
-		Arguments:   buildServiceArgSlice(common),
+		Arguments:   svcArgs,
 	}
 	return servicepkg.New(&serviceProgram{common: common}, config)
 }

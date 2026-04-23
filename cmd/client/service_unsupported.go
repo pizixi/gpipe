@@ -4,8 +4,8 @@ package main
 
 import "fmt"
 
-func installService(common commonArgs) error {
-	_ = common
+func installService(args []string) error {
+	_ = args
 	return fmt.Errorf("service install is only supported on windows and linux")
 }
 

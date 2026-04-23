@@ -38,11 +38,7 @@ func main() {
 
 	switch command {
 	case "install":
-		common, err := parseCommonArgs(args)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err := installService(common); err != nil {
+		if err := installService(args); err != nil {
 			log.Fatal(err)
 		}
 	case "uninstall":
