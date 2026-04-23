@@ -216,7 +216,7 @@ func (s *Session) writeLoop() {
 }
 
 func (s *Session) readLoop() {
-	buf := make([]byte, 4096)
+	buf := make([]byte, 32768)
 	cache := make([]byte, 0, 64*1024)
 	for {
 		if err := s.conn.SetReadDeadline(time.Now().Add(sessionReadTimeout)); err != nil {
@@ -537,6 +537,9 @@ func (q *writeQueue) Close() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.closed = true
+	for i := range q.items {
+		q.items[i] = nil
+	}
 	q.cond.Broadcast()
 }
 

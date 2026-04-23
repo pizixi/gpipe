@@ -96,7 +96,9 @@ func (c *WSConn) SetWriteDeadline(t time.Time) error {
 }
 
 var WSUpgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool { return true },
+	ReadBufferSize:  32 * 1024,
+	WriteBufferSize: 32 * 1024,
+	CheckOrigin:     func(*http.Request) bool { return true },
 }
 
 func writeAll(writer io.Writer, data []byte) (int, error) {

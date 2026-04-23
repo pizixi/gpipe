@@ -194,6 +194,8 @@ func (a *App) connectWS(u *url.URL) (net.Conn, error) {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: tlsHandshakeTimeout,
 		NetDialContext:   a.websocketDialContext,
+		ReadBufferSize:   32 * 1024,
+		WriteBufferSize:  32 * 1024,
 	}
 	if a.opts.EnableTLS {
 		tlsCfg, err := a.tlsConfig(u)
@@ -222,7 +224,10 @@ func (a *App) connectQUIC(u *url.URL) (net.Conn, error) {
 	tlsCfg.NextProtos = []string{"npipe", "h3"}
 	ctx, cancel := context.WithTimeout(context.Background(), tlsHandshakeTimeout)
 	defer cancel()
-	conn, err := quic.DialAddr(ctx, u.Host, tlsCfg, nil)
+	conn, err := quic.DialAddr(ctx, u.Host, tlsCfg, &quic.Config{
+		MaxIdleTimeout:  60 * time.Second,
+		KeepAlivePeriod: 15 * time.Second,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +333,7 @@ func (s *clientSession) lastSeen() time.Time {
 }
 
 func (s *clientSession) readLoop(ctx context.Context) error {
-	buf := make([]byte, 4096)
+	buf := make([]byte, 32768)
 	cache := make([]byte, 0, 64*1024)
 	for {
 		select {

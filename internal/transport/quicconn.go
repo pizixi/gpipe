@@ -2,6 +2,7 @@ package transport
 
 import (
 	"net"
+	"sync"
 	"time"
 
 	quic "github.com/quic-go/quic-go"
@@ -9,10 +10,11 @@ import (
 
 // QUICConn 用单条双向流模拟 net.Conn。
 type QUICConn struct {
-	stream *quic.Stream
-	local  net.Addr
-	remote net.Addr
-	close  func() error
+	stream    *quic.Stream
+	local     net.Addr
+	remote    net.Addr
+	close     func() error
+	closeOnce sync.Once
 }
 
 func NewQUICConn(stream *quic.Stream, local, remote net.Addr, closeFn func() error) *QUICConn {
@@ -37,8 +39,12 @@ func (c *QUICConn) SetDeadline(t time.Time) error {
 func (c *QUICConn) SetReadDeadline(t time.Time) error  { return c.stream.SetReadDeadline(t) }
 func (c *QUICConn) SetWriteDeadline(t time.Time) error { return c.stream.SetWriteDeadline(t) }
 func (c *QUICConn) Close() error {
-	if c.close != nil {
-		_ = c.close()
-	}
-	return c.stream.Close()
+	var err error
+	c.closeOnce.Do(func() {
+		err = c.stream.Close()
+		if c.close != nil {
+			_ = c.close()
+		}
+	})
+	return err
 }

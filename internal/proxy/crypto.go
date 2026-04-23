@@ -68,19 +68,17 @@ func GenerateKey(method EncryptionMethod) ([]byte, error) {
 // CompressData 使用 LZ4 带长度前缀的块格式，对齐 Rust 的 lz4_flex::compress_prepend_size。
 func CompressData(input []byte) ([]byte, error) {
 	maxSize := lz4.CompressBlockBound(len(input))
-	tmp := make([]byte, maxSize)
-	n, err := lz4.CompressBlock(input, tmp, nil)
+	out := make([]byte, 4+maxSize)
+	binary.LittleEndian.PutUint32(out[:4], uint32(len(input)))
+	n, err := lz4.CompressBlock(input, out[4:], nil)
 	if err != nil {
 		return nil, err
 	}
 	if n == 0 {
-		tmp = append([]byte(nil), input...)
-		n = len(tmp)
+		copy(out[4:], input)
+		return out[:4+len(input)], nil
 	}
-	out := make([]byte, 4+n)
-	binary.LittleEndian.PutUint32(out[:4], uint32(len(input)))
-	copy(out[4:], tmp[:n])
-	return out, nil
+	return out[:4+n], nil
 }
 
 // DecompressData 对齐 Rust 的 decompress_size_prepended。

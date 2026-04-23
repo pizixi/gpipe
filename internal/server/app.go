@@ -26,6 +26,7 @@ const (
 	httpWriteTimeout      = 30 * time.Second
 	httpIdleTimeout       = 60 * time.Second
 	httpMaxHeaderBytes    = 1 << 20
+	quicMaxIdleTimeout    = 60 * time.Second
 )
 
 type App struct {
@@ -116,7 +117,9 @@ func (a *App) RunQUIC(addr string) error {
 		return err
 	}
 	tlsCfg.NextProtos = []string{"npipe", "h3"}
-	listener, err := quic.ListenAddr(addr, tlsCfg, nil)
+	listener, err := quic.ListenAddr(addr, tlsCfg, &quic.Config{
+		MaxIdleTimeout: quicMaxIdleTimeout,
+	})
 	if err != nil {
 		return err
 	}
@@ -132,9 +135,7 @@ func (a *App) RunQUIC(addr string) error {
 				if err != nil {
 					return
 				}
-				go a.Hub.NewSession(transport.NewQUICConn(stream, connection.LocalAddr(), connection.RemoteAddr(), func() error {
-					return connection.CloseWithError(0, "")
-				})).Run()
+				go a.Hub.NewSession(transport.NewQUICConn(stream, connection.LocalAddr(), connection.RemoteAddr(), nil)).Run()
 			}
 		}(conn)
 	}
