@@ -115,14 +115,29 @@ func isExpectedNetCloseError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, net.ErrClosed) {
+	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	// net.OpError 的 Timeout（含 Windows keep-alive 触发的 wsarecv 超时）视为对端静默断开，属于预期场景。
+	var nerr net.Error
+	if errors.As(err, &nerr) && nerr.Timeout() {
 		return true
 	}
 	text := strings.ToLower(err.Error())
 	return strings.Contains(text, "use of closed network connection") ||
 		strings.Contains(text, "forcibly closed by the remote host") ||
 		strings.Contains(text, "connection reset by peer") ||
-		strings.Contains(text, "broken pipe")
+		strings.Contains(text, "broken pipe") ||
+		strings.Contains(text, "connection aborted") ||
+		strings.Contains(text, "software caused connection abort") ||
+		strings.Contains(text, "an established connection was aborted") ||
+		strings.Contains(text, "an existing connection was forcibly closed") ||
+		strings.Contains(text, "connection timed out") ||
+		strings.Contains(text, "i/o timeout") ||
+		strings.Contains(text, "no route to host") ||
+		strings.Contains(text, "network is unreachable") ||
+		strings.Contains(text, "wsarecv") ||
+		strings.Contains(text, "wsasend")
 }
 
 func configureTCPConn(conn *net.TCPConn) error {
