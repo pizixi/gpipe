@@ -330,11 +330,13 @@ func (s *Service) playerList(w http.ResponseWriter, r *http.Request) {
 	players := make([]PlayerListItem, 0, len(users))
 	for _, user := range users {
 		players = append(players, PlayerListItem{
-			ID:         user.ID,
-			Remark:     user.Remark,
-			Key:        user.Key,
-			CreateTime: user.CreateTime,
-			Online:     s.rt.Players.IsOnline(user.ID),
+			ID:             user.ID,
+			Remark:         user.Remark,
+			Key:            user.Key,
+			CreateTime:     user.CreateTime,
+			LastOnlineTime: user.LastOnlineTime,
+			LastIP:         user.LastIP,
+			Online:         s.rt.Players.IsOnline(user.ID),
 		})
 	}
 	writeJSON(w, http.StatusOK, PlayerListResponse{

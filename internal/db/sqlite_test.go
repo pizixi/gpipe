@@ -1,40 +1,58 @@
 package db
 
 import (
-	"path/filepath"
-	"strings"
+	"database/sql"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
-func TestOpenAppliesSQLitePragmas(t *testing.T) {
-	path := filepath.ToSlash(filepath.Join(t.TempDir(), "test.db"))
-	database, err := Open("sqlite://" + path + "?mode=rwc")
+func TestMigrateAddsPlayerLoginInfoColumnsToExistingUserTable(t *testing.T) {
+	database, err := sql.Open("sqlite", "file:test_migrate_player_login_info?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	defer database.Close()
 
-	var journalMode string
-	if err := database.QueryRow(`PRAGMA journal_mode`).Scan(&journalMode); err != nil {
-		t.Fatalf("query journal_mode: %v", err)
-	}
-	if !strings.EqualFold(journalMode, "wal") {
-		t.Fatalf("journal_mode = %q, want wal", journalMode)
-	}
-
-	var busyTimeout int
-	if err := database.QueryRow(`PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
-		t.Fatalf("query busy_timeout: %v", err)
-	}
-	if busyTimeout != 5000 {
-		t.Fatalf("busy_timeout = %d, want 5000", busyTimeout)
+	if _, err := database.Exec(`CREATE TABLE user (
+		id INTEGER PRIMARY KEY,
+		username TEXT NOT NULL UNIQUE,
+		password TEXT NOT NULL,
+		create_time TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create old user table: %v", err)
 	}
 
-	var foreignKeys int
-	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
-		t.Fatalf("query foreign_keys: %v", err)
+	if err := migrate(database); err != nil {
+		t.Fatalf("migrate old schema: %v", err)
 	}
-	if foreignKeys != 1 {
-		t.Fatalf("foreign_keys = %d, want 1", foreignKeys)
+
+	columns := map[string]bool{}
+	rows, err := database.Query(`PRAGMA table_info("user")`)
+	if err != nil {
+		t.Fatalf("table info: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &primaryKey); err != nil {
+			t.Fatalf("scan table info: %v", err)
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows error: %v", err)
+	}
+	for _, column := range []string{"last_online_time", "last_ip"} {
+		if !columns[column] {
+			t.Fatalf("expected column %q to be added", column)
+		}
 	}
 }

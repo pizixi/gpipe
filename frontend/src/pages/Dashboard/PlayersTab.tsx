@@ -27,8 +27,14 @@ const getCreateTimeMs = (value: string) => {
   return Number.isFinite(time) ? time : 0;
 };
 
+const getOptionalTimeMs = (value: string | null | undefined) => {
+  const time = new Date(value ?? '').getTime();
+  return Number.isFinite(time) ? time : 0;
+};
+
 const comparePlayersByDefault = (a: PlayerListItem, b: PlayerListItem) => (
   Number(b.online) - Number(a.online)
+  || getOptionalTimeMs(b.last_online_time) - getOptionalTimeMs(a.last_online_time)
   || getCreateTimeMs(b.create_time) - getCreateTimeMs(a.create_time)
   || b.id - a.id
 );
@@ -67,7 +73,11 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
   const filtered = players.filter((player) => {
     if (!search.trim()) return true;
     const keyword = search.trim().toLowerCase();
-    return String(player.id).includes(keyword) || (player.remark ?? '').toLowerCase().includes(keyword);
+    return (
+      String(player.id).includes(keyword)
+      || (player.remark ?? '').toLowerCase().includes(keyword)
+      || (player.last_ip ?? '').toLowerCase().includes(keyword)
+    );
   });
   const sortedPlayers = filtered.slice().sort(comparePlayersByDefault);
 
@@ -143,6 +153,26 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       },
     },
     {
+      title: t('last_online_time'),
+      dataIndex: 'last_online_time',
+      sorter: (a, b) => getOptionalTimeMs(a.last_online_time) - getOptionalTimeMs(b.last_online_time),
+      render: (value: string | null) => {
+        const text = formatDateTime(value);
+        return text || <span className="player-meta-empty">-</span>;
+      },
+      width: 180,
+    },
+    {
+      title: t('client_ip'),
+      dataIndex: 'last_ip',
+      ellipsis: true,
+      sorter: (a, b) => (a.last_ip ?? '').localeCompare(b.last_ip ?? ''),
+      render: (value: string) => (
+        value ? <span className="player-client-ip">{value}</span> : <span className="player-meta-empty">-</span>
+      ),
+      width: 156,
+    },
+    {
       title: t('online_status'),
       dataIndex: 'online',
       sorter: (a, b) => Number(a.online) - Number(b.online),
@@ -209,7 +239,7 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1030, y: tableScrollY }}
+          scroll={{ x: 1360, y: tableScrollY }}
           locale={{ emptyText: t('empty_players') }}
           bordered
           tableLayout="fixed"

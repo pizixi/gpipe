@@ -53,6 +53,8 @@
   "player_remark": "备注",
   "player_key": "密钥",
   "create_time": "创建时间",
+  "last_online_time": "最近在线时间",
+  "client_ip": "客户端IP",
   "username": "用户名",
   "password": "密码",
   "online_status": "在线状态",

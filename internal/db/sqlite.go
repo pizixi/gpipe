@@ -51,7 +51,9 @@ func migrate(db *sql.DB) error {
 			id INTEGER PRIMARY KEY,
 			username TEXT NOT NULL UNIQUE,
 			password TEXT NOT NULL,
-			create_time TEXT NOT NULL
+			create_time TEXT NOT NULL,
+			last_online_time TEXT NOT NULL DEFAULT '',
+			last_ip TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS tunnel (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +99,43 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	if err := ensureColumn(db, "user", "last_online_time", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "user", "last_ip", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	return nil
+}
+
+func ensureColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query(`PRAGMA table_info("` + table + `")`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &primaryKey); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = db.Exec(`ALTER TABLE "` + table + `" ADD COLUMN ` + column + ` ` + definition)
+	return err
 }
 
 func configureSQLite(db *sql.DB) error {

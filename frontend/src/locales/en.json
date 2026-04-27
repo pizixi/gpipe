@@ -53,6 +53,8 @@
   "player_remark": "Remark",
   "player_key": "Key",
   "create_time": "Created",
+  "last_online_time": "Last Online",
+  "client_ip": "Client IP",
   "username": "Username",
   "password": "Password",
   "online_status": "Status",

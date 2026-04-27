@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pizixi/gpipe/internal/model"
@@ -30,7 +31,7 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 	}
 
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time
+		SELECT id, username, password, create_time, last_online_time, last_ip
 		FROM user
 		ORDER BY create_time DESC, id DESC
 		LIMIT ? OFFSET ?`, pageSize, pageNumber*pageSize)
@@ -41,13 +42,9 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 
 	var users []model.User
 	for rows.Next() {
-		var user model.User
-		var createTime string
-		if err := rows.Scan(&user.ID, &user.Remark, &user.Key, &createTime); err != nil {
+		user, err := scanUser(rows)
+		if err != nil {
 			return nil, 0, err
-		}
-		if ts, err := time.Parse(time.RFC3339Nano, createTime); err == nil {
-			user.CreateTime = ts
 		}
 		users = append(users, user)
 	}
@@ -56,7 +53,7 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 
 func (s *UserStore) FindByKey(key string) (*model.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time
+		SELECT id, username, password, create_time, last_online_time, last_ip
 		FROM user
 		WHERE password = ?
 		ORDER BY id
@@ -74,13 +71,11 @@ func (s *UserStore) FindByKey(key string) (*model.User, error) {
 	)
 	for rows.Next() {
 		count++
-		item := &model.User{}
-		var createTime string
-		if err := rows.Scan(&item.ID, &item.Remark, &item.Key, &createTime); err != nil {
+		item, err := scanUser(rows)
+		if err != nil {
 			return nil, err
 		}
-		item.CreateTime, _ = time.Parse(time.RFC3339Nano, createTime)
-		user = item
+		user = &item
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -97,45 +92,41 @@ func (s *UserStore) FindByKey(key string) (*model.User, error) {
 
 func (s *UserStore) FindByRemark(remark string) (*model.User, error) {
 	row := s.db.QueryRow(`
-		SELECT id, username, password, create_time
+		SELECT id, username, password, create_time, last_online_time, last_ip
 		FROM user
 		WHERE username = ?`,
 		remark,
 	)
-	var user model.User
-	var createTime string
-	if err := row.Scan(&user.ID, &user.Remark, &user.Key, &createTime); err != nil {
+	user, err := scanUser(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	user.CreateTime, _ = time.Parse(time.RFC3339Nano, createTime)
 	return &user, nil
 }
 
 func (s *UserStore) FindByID(id uint32) (*model.User, error) {
 	row := s.db.QueryRow(`
-		SELECT id, username, password, create_time
+		SELECT id, username, password, create_time, last_online_time, last_ip
 		FROM user
 		WHERE id = ?`,
 		id,
 	)
-	var user model.User
-	var createTime string
-	if err := row.Scan(&user.ID, &user.Remark, &user.Key, &createTime); err != nil {
+	user, err := scanUser(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	user.CreateTime, _ = time.Parse(time.RFC3339Nano, createTime)
 	return &user, nil
 }
 
 func (s *UserStore) FindAll() ([]model.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time
+		SELECT id, username, password, create_time, last_online_time, last_ip
 		FROM user
 		ORDER BY create_time DESC, id DESC`)
 	if err != nil {
@@ -145,12 +136,10 @@ func (s *UserStore) FindAll() ([]model.User, error) {
 
 	var users []model.User
 	for rows.Next() {
-		var user model.User
-		var createTime string
-		if err := rows.Scan(&user.ID, &user.Remark, &user.Key, &createTime); err != nil {
+		user, err := scanUser(rows)
+		if err != nil {
 			return nil, err
 		}
-		user.CreateTime, _ = time.Parse(time.RFC3339Nano, createTime)
 		users = append(users, user)
 	}
 	return users, rows.Err()
@@ -158,9 +147,14 @@ func (s *UserStore) FindAll() ([]model.User, error) {
 
 func (s *UserStore) Insert(user model.User) error {
 	_, err := s.db.Exec(`
-		INSERT INTO user(id, username, password, create_time)
-		VALUES(?, ?, ?, ?)`,
-		user.ID, user.Remark, user.Key, user.CreateTime.UTC().Format(time.RFC3339Nano),
+		INSERT INTO user(id, username, password, create_time, last_online_time, last_ip)
+		VALUES(?, ?, ?, ?, ?, ?)`,
+		user.ID,
+		user.Remark,
+		user.Key,
+		user.CreateTime.UTC().Format(time.RFC3339Nano),
+		formatOptionalTime(user.LastOnlineTime),
+		strings.TrimSpace(user.LastIP),
 	)
 	return err
 }
@@ -185,6 +179,28 @@ func (s *UserStore) Update(update model.PlayerUpdate) error {
 	return nil
 }
 
+func (s *UserStore) UpdateLoginInfo(id uint32, at time.Time, ip string) error {
+	result, err := s.db.Exec(`
+		UPDATE user
+		SET last_online_time = ?, last_ip = ?
+		WHERE id = ?`,
+		at.UTC().Format(time.RFC3339Nano),
+		strings.TrimSpace(ip),
+		id,
+	)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return fmt.Errorf("update player login info: rows_affected = %d", rows)
+	}
+	return nil
+}
+
 func (s *UserStore) Delete(id uint32) error {
 	result, err := s.db.Exec(`DELETE FROM user WHERE id = ?`, id)
 	if err != nil {
@@ -198,4 +214,44 @@ func (s *UserStore) Delete(id uint32) error {
 		return fmt.Errorf("delete player: rows_affected = %d", rows)
 	}
 	return nil
+}
+
+type userScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanUser(scanner userScanner) (model.User, error) {
+	var (
+		user           model.User
+		createTime     string
+		lastOnlineTime sql.NullString
+		lastIP         sql.NullString
+	)
+	if err := scanner.Scan(
+		&user.ID,
+		&user.Remark,
+		&user.Key,
+		&createTime,
+		&lastOnlineTime,
+		&lastIP,
+	); err != nil {
+		return model.User{}, err
+	}
+	user.CreateTime, _ = time.Parse(time.RFC3339Nano, createTime)
+	if lastOnlineTime.Valid && strings.TrimSpace(lastOnlineTime.String) != "" {
+		if ts, err := time.Parse(time.RFC3339Nano, lastOnlineTime.String); err == nil {
+			user.LastOnlineTime = &ts
+		}
+	}
+	if lastIP.Valid {
+		user.LastIP = strings.TrimSpace(lastIP.String)
+	}
+	return user, nil
+}
+
+func formatOptionalTime(value *time.Time) string {
+	if value == nil || value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }

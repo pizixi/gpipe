@@ -224,6 +224,17 @@
   font-weight: 400;
 }
 
+.dashboard-data-table .player-client-ip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.dashboard-data-table .player-meta-empty {
+  color: #94a3b8;
+}
+
 .dashboard-data-table .protocol-badge {
   display: inline-flex;
   align-items: center;

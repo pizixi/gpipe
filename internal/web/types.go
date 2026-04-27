@@ -18,11 +18,13 @@ type PlayerListRequest struct {
 }
 
 type PlayerListItem struct {
-	ID         uint32    `json:"id"`
-	Remark     string    `json:"remark"`
-	Key        string    `json:"key"`
-	CreateTime time.Time `json:"create_time"`
-	Online     bool      `json:"online"`
+	ID             uint32     `json:"id"`
+	Remark         string     `json:"remark"`
+	Key            string     `json:"key"`
+	CreateTime     time.Time  `json:"create_time"`
+	LastOnlineTime *time.Time `json:"last_online_time"`
+	LastIP         string     `json:"last_ip"`
+	Online         bool       `json:"online"`
 }
 
 type PlayerListResponse struct {

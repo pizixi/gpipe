@@ -20,6 +20,8 @@ export interface PlayerListItem {
   remark: string;
   key: string;
   create_time: string;
+  last_online_time: string | null;
+  last_ip: string;
   online: boolean;
 }
 

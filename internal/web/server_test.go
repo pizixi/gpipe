@@ -612,6 +612,65 @@ func TestPlayerListReturnsCreateTimeAndNewestFirst(t *testing.T) {
 	}
 }
 
+func TestPlayerListReturnsClientLoginInfo(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_web_player_list_login_info?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	_, _, playerID, err := rt.Players.Add("alice", "secret1")
+	if err != nil {
+		t.Fatalf("add player: %v", err)
+	}
+	lastOnline := time.Date(2026, time.April, 27, 15, 38, 32, 0, time.UTC)
+	if err := rt.Players.RecordLogin(playerID, "203.0.113.10", lastOnline); err != nil {
+		t.Fatalf("record login info: %v", err)
+	}
+
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin",
+		WebPassword: "secret",
+	}, rt)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/player_list",
+		strings.NewReader(`{"page_number":0,"page_size":0}`),
+	)
+	req.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	recorder := httptest.NewRecorder()
+
+	service.playerList(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var resp PlayerListResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Players) != 1 {
+		t.Fatalf("len(players) = %d, want %d", len(resp.Players), 1)
+	}
+	player := resp.Players[0]
+	if player.LastIP != "203.0.113.10" {
+		t.Fatalf("last_ip = %q, want %q", player.LastIP, "203.0.113.10")
+	}
+	if player.LastOnlineTime == nil || !player.LastOnlineTime.Equal(lastOnline) {
+		t.Fatalf("last_online_time = %v, want %v", player.LastOnlineTime, lastOnline)
+	}
+}
+
 func TestAddPlayerEndpointGeneratesKeyAndReturnsRemarkFields(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_web_add_player_generate_key?mode=memory&cache=shared")
 	if err != nil {

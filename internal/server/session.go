@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -459,6 +460,9 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 		return &pb.Error{Number: -2, Message: "Incorrect key"}
 	}
 	s.playerID = user.ID
+	if err := s.hub.runtime.Players.RecordLogin(user.ID, sessionClientIP(s.conn), time.Now().UTC()); err != nil {
+		s.logger.Printf("record player login info failed: player=%d err=%v", user.ID, err)
+	}
 	s.hub.registerPlayer(user.ID, s)
 	s.hub.runtime.Players.Bind(user.ID, s)
 	tunnels := s.hub.runtime.Tunnel.ByPlayer(user.ID)
@@ -471,6 +475,18 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 	}
 	s.hub.broadcastPlayerTunnelStates(user.ID, user.ID)
 	return reply
+}
+
+func sessionClientIP(conn net.Conn) string {
+	if conn == nil || conn.RemoteAddr() == nil {
+		return ""
+	}
+	addr := strings.TrimSpace(conn.RemoteAddr().String())
+	host, _, err := net.SplitHostPort(addr)
+	if err == nil {
+		return host
+	}
+	return addr
 }
 
 func (s *Session) onRegister(msg *pb.RegisterReq) proto.Message {

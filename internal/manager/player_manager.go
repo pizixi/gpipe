@@ -103,6 +103,13 @@ func (m *PlayerManager) Bind(id uint32, session PlayerSession) {
 	}
 }
 
+func (m *PlayerManager) RecordLogin(id uint32, clientIP string, at time.Time) error {
+	if m == nil || m.store == nil {
+		return nil
+	}
+	return m.store.UpdateLoginInfo(id, at.UTC(), clientIP)
+}
+
 func (m *PlayerManager) Unbind(id uint32, session PlayerSession) {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
