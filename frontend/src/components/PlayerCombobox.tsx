@@ -203,7 +203,7 @@ const PlayerCombobox: React.FC<Props> = ({ value, onChange }) => {
                       width: 8,
                       height: 8,
                       borderRadius: '50%',
-                      background: opt.player.online ? '#52c41a' : '#d9d9d9',
+                      background: opt.player.online ? '#14b8a6' : '#d9d9d9',
                       flexShrink: 0,
                     }}
                     title={t(opt.player.online ? 'online' : 'offline')}

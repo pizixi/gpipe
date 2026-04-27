@@ -1,16 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Input, Modal, message, Tooltip, Select, Grid } from 'antd';
+import { Table, Button, Input, Modal, message, Tooltip, Select, Grid, Switch, Popconfirm } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  PlayCircleOutlined,
-  PauseCircleOutlined,
   SearchOutlined,
   SwapRightOutlined,
   WifiOutlined,
   DisconnectOutlined,
   QuestionCircleOutlined,
+  ExclamationCircleFilled,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
@@ -126,6 +125,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingTunnel, setEditingTunnel] = useState<TunnelListItem | null>(null);
+  const [togglingTunnelIds, setTogglingTunnelIds] = useState<Set<number>>(() => new Set());
   const [tableRegionRef, tableRegionHeight] = useElementHeight<HTMLDivElement>();
 
   useEffect(() => {
@@ -241,30 +241,44 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     });
   };
 
-  const handleToggle = async (tunnel: TunnelListItem) => {
-    const freshData = await tunnelsApi.fetchTunnels();
-    const fresh = (freshData.tunnels || []).find((item) => item.id === tunnel.id);
-    if (!fresh) {
-      message.error(t('tunnel_not_found'));
+  const handleToggle = async (tunnel: TunnelListItem, nextEnabled: boolean) => {
+    if (togglingTunnelIds.has(tunnel.id)) {
       return;
     }
-    const res = await tunnelsApi.updateTunnel({
-      id: fresh.id,
-      source: fresh.source,
-      endpoint: fresh.endpoint,
-      enabled: fresh.enabled ? 0 : 1,
-      sender: fresh.sender,
-      receiver: fresh.receiver,
-      description: fresh.description,
-      tunnel_type: fresh.tunnel_type,
-      password: fresh.password,
-      username: fresh.username,
-      is_compressed: fresh.is_compressed ? 1 : 0,
-      encryption_method: fresh.encryption_method,
-      custom_mapping: fresh.custom_mapping || {},
-    });
-    if (res.code === 0) loadTunnels();
-    else message.error(t('update_tunnel_failed') + res.msg);
+    setTogglingTunnelIds((current) => new Set(current).add(tunnel.id));
+    try {
+      const freshData = await tunnelsApi.fetchTunnels();
+      const fresh = (freshData.tunnels || []).find((item) => item.id === tunnel.id);
+      if (!fresh) {
+        message.error(t('tunnel_not_found'));
+        return;
+      }
+      const res = await tunnelsApi.updateTunnel({
+        id: fresh.id,
+        source: fresh.source,
+        endpoint: fresh.endpoint,
+        enabled: nextEnabled ? 1 : 0,
+        sender: fresh.sender,
+        receiver: fresh.receiver,
+        description: fresh.description,
+        tunnel_type: fresh.tunnel_type,
+        password: fresh.password,
+        username: fresh.username,
+        is_compressed: fresh.is_compressed ? 1 : 0,
+        encryption_method: fresh.encryption_method,
+        custom_mapping: fresh.custom_mapping || {},
+      });
+      if (res.code === 0) loadTunnels();
+      else message.error(t('update_tunnel_failed') + res.msg);
+    } catch {
+      message.error(t('update_tunnel_failed'));
+    } finally {
+      setTogglingTunnelIds((current) => {
+        const next = new Set(current);
+        next.delete(tunnel.id);
+        return next;
+      });
+    }
   };
 
   const handleResetFilters = () => {
@@ -366,24 +380,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       },
     },
     {
-      title: t('status'),
-      dataIndex: 'enabled',
-      sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
-      width: 96,
-      align: 'center' as const,
-      render: (value: boolean) => (
-        <StatusPill variant={value ? 'enabled' : 'disabled'} label={t(value ? 'enabled' : 'disabled')} />
-      ),
-    },
-    {
-      title: t('runtime_status'),
-      dataIndex: 'runtime_status',
-      sorter: (a, b) => (a.runtime_status ?? '').localeCompare(b.runtime_status ?? ''),
-      width: 126,
-      align: 'center' as const,
-      render: (_, record) => renderRuntimeStatus(record),
-    },
-    {
       title: t('description'),
       dataIndex: 'description',
       ellipsis: true,
@@ -400,8 +396,54 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       },
     },
     {
+      title: t('runtime_status'),
+      dataIndex: 'runtime_status',
+      sorter: (a, b) => (a.runtime_status ?? '').localeCompare(b.runtime_status ?? ''),
+      width: 126,
+      align: 'center' as const,
+      render: (_, record) => renderRuntimeStatus(record),
+    },
+    {
+      title: t('status'),
+      dataIndex: 'enabled',
+      sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
+      width: 110,
+      align: 'center' as const,
+      render: (value: boolean, record) => {
+        const nextEnabled = !value;
+        const isLoading = togglingTunnelIds.has(record.id);
+        return (
+          <Popconfirm
+            placement="topRight"
+            overlayClassName="tunnel-enable-confirm"
+            title={t(nextEnabled ? 'confirm_enable_tunnel' : 'confirm_disable_tunnel')}
+            description={t(nextEnabled ? 'confirm_enable_tunnel_desc' : 'confirm_disable_tunnel_desc')}
+            okText={t('confirm_button')}
+            cancelText={t('cancel')}
+            okButtonProps={{ danger: !nextEnabled }}
+            icon={
+              <ExclamationCircleFilled
+                style={{ color: nextEnabled ? '#0d9488' : '#f59e0b' }}
+              />
+            }
+            onConfirm={() => handleToggle(record, nextEnabled)}
+            disabled={isLoading}
+          >
+            <Tooltip title={t(value ? 'enabled' : 'disabled')}>
+              <Switch
+                className="tunnel-enable-switch"
+                checked={value}
+                loading={isLoading}
+                aria-label={t('status')}
+              />
+            </Tooltip>
+          </Popconfirm>
+        );
+      },
+    },
+    {
       title: t('actions'),
-      width: 154,
+      width: 104,
       fixed: fixActionColumn ? ('right' as const) : undefined,
       render: (_, record) => (
         <div className="table-action-group">
@@ -418,20 +460,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
           </Tooltip>
           <Tooltip title={t('delete_button')}>
             <Button className="table-action-button" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record.id)} />
-          </Tooltip>
-          <Tooltip title={t(record.enabled ? 'disabled' : 'enabled')}>
-            <Button
-              className="table-action-button"
-              type="text"
-              icon={
-                record.enabled ? (
-                  <PauseCircleOutlined style={{ color: '#f59e0b' }} />
-                ) : (
-                  <PlayCircleOutlined style={{ color: '#16a34a' }} />
-                )
-              }
-              onClick={() => handleToggle(record)}
-            />
           </Tooltip>
         </div>
       ),
@@ -500,7 +528,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1734, y: tableScrollY }}
+          scroll={{ x: 1720, y: tableScrollY }}
           locale={{ emptyText: t('empty_tunnels') }}
           bordered
           tableLayout="fixed"
