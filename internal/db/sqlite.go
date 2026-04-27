@@ -79,6 +79,18 @@ func migrate(db *sql.DB) error {
 			ss_method TEXT NOT NULL,
 			ss_password TEXT NOT NULL
 		)`,
+		// 玩家级客户端生成配置。未配置时生成逻辑回退到 client_build_settings 的全局默认值。
+		`CREATE TABLE IF NOT EXISTS player_client_build_settings (
+			player_id INTEGER PRIMARY KEY,
+			server TEXT NOT NULL,
+			enable_tls INTEGER NOT NULL,
+			tls_server_name TEXT NOT NULL,
+			use_shadowsocks INTEGER NOT NULL,
+			ss_server TEXT NOT NULL,
+			ss_method TEXT NOT NULL,
+			ss_password TEXT NOT NULL,
+			FOREIGN KEY(player_id) REFERENCES user(id) ON DELETE CASCADE
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {

@@ -3,6 +3,7 @@ import type {
   GeneralResponse,
   ClientBuildSettingsResponse,
   ClientBuildSettingsPayload,
+  PlayerClientBuildSettingsResponse,
   GenerateClientReq,
 } from '../types';
 
@@ -20,6 +21,16 @@ export async function updateClientBuildSettings(
   const { data } = await apiClient.post<GeneralResponse>(
     '/api/update_client_build_settings',
     settings,
+  );
+  return data;
+}
+
+export async function fetchPlayerClientBuildSettings(
+  playerId: number,
+): Promise<PlayerClientBuildSettingsResponse> {
+  const { data } = await apiClient.post<PlayerClientBuildSettingsResponse>(
+    '/api/player_client_build_settings',
+    { player_id: playerId },
   );
   return data;
 }

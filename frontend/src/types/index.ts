@@ -43,9 +43,15 @@ export interface ClientBuildSettingsResponse {
   settings: ClientBuildSettingsPayload;
 }
 
+export interface PlayerClientBuildSettingsResponse {
+  settings: ClientBuildSettingsPayload;
+  customized: boolean;
+}
+
 export interface GenerateClientReq {
   player_id: number;
   target: string;
+  settings?: ClientBuildSettingsPayload;
 }
 
 export interface PlayerRemoveReq {

@@ -62,6 +62,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/api/test_auth", s.testAuth)
 	mux.HandleFunc("/api/client_build_settings", s.clientBuildSettings)
 	mux.HandleFunc("/api/update_client_build_settings", s.updateClientBuildSettings)
+	mux.HandleFunc("/api/player_client_build_settings", s.playerClientBuildSettings)
 	mux.HandleFunc("/api/player_list", s.playerList)
 	mux.HandleFunc("/api/remove_player", s.removePlayer)
 	mux.HandleFunc("/api/add_player", s.addPlayer)
@@ -233,15 +234,7 @@ func (s *Service) clientBuildSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, ClientBuildSettingsResponse{
-		Settings: ClientBuildSettingsPayload{
-			Server:         settings.Server,
-			EnableTLS:      settings.EnableTLS,
-			TLSServerName:  settings.TLSServerName,
-			UseShadowsocks: settings.UseShadowsocks,
-			SSServer:       settings.SSServer,
-			SSMethod:       settings.SSMethod,
-			SSPassword:     settings.SSPassword,
-		},
+		Settings: clientBuildSettingsPayload(settings),
 	})
 }
 
@@ -253,15 +246,7 @@ func (s *Service) updateClientBuildSettings(w http.ResponseWriter, r *http.Reque
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	settings := model.ClientBuildSettings{
-		Server:         req.Server,
-		EnableTLS:      req.EnableTLS,
-		TLSServerName:  req.TLSServerName,
-		UseShadowsocks: req.UseShadowsocks,
-		SSServer:       req.SSServer,
-		SSMethod:       req.SSMethod,
-		SSPassword:     req.SSPassword,
-	}
+	settings := clientBuildSettingsModel(req)
 	if err := clientbuild.ValidateSettings(settings); err != nil {
 		writeJSON(w, http.StatusOK, GeneralResponse{Code: -2, Msg: err.Error()})
 		return
@@ -272,6 +257,34 @@ func (s *Service) updateClientBuildSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, GeneralResponse{Code: 0, Msg: "Success"})
+}
+
+func (s *Service) playerClientBuildSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuth(w, r) {
+		return
+	}
+	var req PlayerClientBuildSettingsRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	player, err := s.rt.Users.FindByID(req.PlayerID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	if player == nil {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -2, Msg: "player not found"})
+		return
+	}
+	settings, customized, err := s.rt.ClientBuildSettings.GetForPlayer(req.PlayerID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, PlayerClientBuildSettingsResponse{
+		Settings:   clientBuildSettingsPayload(settings),
+		Customized: customized,
+	})
 }
 
 func (s *Service) playerList(w http.ResponseWriter, r *http.Request) {
@@ -360,9 +373,12 @@ func (s *Service) generateClient(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, GeneralResponse{Code: -2, Msg: "player not found"})
 		return
 	}
-	// 生成时读取的是最新的后台设置，确保下载内容和当前页面保存值一致。
-	settings, err := s.rt.ClientBuildSettings.Get()
+	settings, clientErr, err := s.settingsForGenerateClient(req)
 	if err != nil {
+		if clientErr {
+			writeJSON(w, http.StatusOK, GeneralResponse{Code: -3, Msg: err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
 		return
 	}
@@ -377,6 +393,48 @@ func (s *Service) generateClient(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(artifact.Data)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(artifact.Data)
+}
+
+func (s *Service) settingsForGenerateClient(req GenerateClientReq) (model.ClientBuildSettings, bool, error) {
+	if req.Settings == nil {
+		settings, _, err := s.rt.ClientBuildSettings.GetForPlayer(req.PlayerID)
+		return settings, false, err
+	}
+
+	settings := clientBuildSettingsModel(*req.Settings)
+	if err := clientbuild.ValidateSettings(settings); err != nil {
+		return model.ClientBuildSettings{}, true, err
+	}
+	if err := s.rt.ClientBuildSettings.SaveForPlayer(req.PlayerID, settings); err != nil {
+		return model.ClientBuildSettings{}, false, err
+	}
+	// 使用刚落库后的归一化配置生成客户端，避免表单里的空白和禁用字段进入二进制。
+	settings, _, err := s.rt.ClientBuildSettings.GetForPlayer(req.PlayerID)
+	return settings, false, err
+}
+
+func clientBuildSettingsPayload(settings model.ClientBuildSettings) ClientBuildSettingsPayload {
+	return ClientBuildSettingsPayload{
+		Server:         settings.Server,
+		EnableTLS:      settings.EnableTLS,
+		TLSServerName:  settings.TLSServerName,
+		UseShadowsocks: settings.UseShadowsocks,
+		SSServer:       settings.SSServer,
+		SSMethod:       settings.SSMethod,
+		SSPassword:     settings.SSPassword,
+	}
+}
+
+func clientBuildSettingsModel(payload ClientBuildSettingsPayload) model.ClientBuildSettings {
+	return model.ClientBuildSettings{
+		Server:         payload.Server,
+		EnableTLS:      payload.EnableTLS,
+		TLSServerName:  payload.TLSServerName,
+		UseShadowsocks: payload.UseShadowsocks,
+		SSServer:       payload.SSServer,
+		SSMethod:       payload.SSMethod,
+		SSPassword:     payload.SSPassword,
+	}
 }
 
 func (s *Service) addPlayer(w http.ResponseWriter, r *http.Request) {

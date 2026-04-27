@@ -730,6 +730,115 @@ func TestGenerateClientEndpointReturnsBinaryArtifact(t *testing.T) {
 	}
 }
 
+func TestGenerateClientPersistsPlayerBuildSettings(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_web_generate_client_player_settings?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	_, _, playerID, err := rt.Players.Add("alice", "player-secret")
+	if err != nil {
+		t.Fatalf("add player: %v", err)
+	}
+	if err := rt.ClientBuildSettings.Save(model.ClientBuildSettings{
+		Server: "tcp://127.0.0.1:8118",
+	}); err != nil {
+		t.Fatalf("save global settings: %v", err)
+	}
+
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin",
+		WebPassword: "secret",
+	}, rt)
+	builder := &clientBuilderStub{
+		artifact: &clientbuild.Artifact{
+			Filename: "gpipe-client.exe",
+			Data:     []byte("binary-data"),
+		},
+	}
+	service.clientBuilder = builder
+
+	getReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/player_client_build_settings",
+		strings.NewReader(`{"player_id":`+strconv.FormatUint(uint64(playerID), 10)+`}`),
+	)
+	getReq.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	getRecorder := httptest.NewRecorder()
+	service.playerClientBuildSettings(getRecorder, getReq)
+
+	var initialResp PlayerClientBuildSettingsResponse
+	if err := json.Unmarshal(getRecorder.Body.Bytes(), &initialResp); err != nil {
+		t.Fatalf("decode initial settings response: %v", err)
+	}
+	if initialResp.Customized {
+		t.Fatalf("expected initial player settings to use global defaults")
+	}
+	if initialResp.Settings.Server != "tcp://127.0.0.1:8118" {
+		t.Fatalf("initial server = %q, want global default", initialResp.Settings.Server)
+	}
+
+	customServer := "tcp://127.0.0.1:9118"
+	generateReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/generate_client",
+		strings.NewReader(`{"player_id":`+strconv.FormatUint(uint64(playerID), 10)+`,"target":"windows-amd64","settings":{"server":"`+customServer+`","enable_tls":false,"tls_server_name":"","use_shadowsocks":false,"ss_server":"","ss_method":"chacha20-ietf-poly1305","ss_password":""}}`),
+	)
+	generateReq.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	generateRecorder := httptest.NewRecorder()
+	service.generateClient(generateRecorder, generateReq)
+
+	if generateRecorder.Code != http.StatusOK {
+		t.Fatalf("generate status = %d, want %d", generateRecorder.Code, http.StatusOK)
+	}
+	if builder.lastSettings.Server != customServer {
+		t.Fatalf("generated server = %q, want %q", builder.lastSettings.Server, customServer)
+	}
+
+	stored, customized, err := rt.ClientBuildSettings.GetForPlayer(playerID)
+	if err != nil {
+		t.Fatalf("get stored player settings: %v", err)
+	}
+	if !customized {
+		t.Fatalf("expected player settings to be customized after generate")
+	}
+	if stored.Server != customServer {
+		t.Fatalf("stored server = %q, want %q", stored.Server, customServer)
+	}
+
+	builder.lastSettings = model.ClientBuildSettings{}
+	reuseReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/generate_client",
+		strings.NewReader(`{"player_id":`+strconv.FormatUint(uint64(playerID), 10)+`,"target":"linux-amd64"}`),
+	)
+	reuseReq.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	reuseRecorder := httptest.NewRecorder()
+	service.generateClient(reuseRecorder, reuseReq)
+
+	if reuseRecorder.Code != http.StatusOK {
+		t.Fatalf("reuse status = %d, want %d", reuseRecorder.Code, http.StatusOK)
+	}
+	if builder.lastSettings.Server != customServer {
+		t.Fatalf("reused server = %q, want %q", builder.lastSettings.Server, customServer)
+	}
+}
+
 func TestUpdatePlayerEndpointRejectsKeyChangeWhenPlayerOnline(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_web_update_online_player?mode=memory&cache=shared")
 	if err != nil {

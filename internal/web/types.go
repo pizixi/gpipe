@@ -36,6 +36,17 @@ type ClientBuildSettingsResponse struct {
 	Settings ClientBuildSettingsPayload `json:"settings"`
 }
 
+// PlayerClientBuildSettingsRequest 请求指定玩家的客户端生成配置。
+type PlayerClientBuildSettingsRequest struct {
+	PlayerID uint32 `json:"player_id"`
+}
+
+// PlayerClientBuildSettingsResponse 返回玩家专属配置；没有专属配置时返回全局默认配置。
+type PlayerClientBuildSettingsResponse struct {
+	Settings   ClientBuildSettingsPayload `json:"settings"`
+	Customized bool                       `json:"customized"`
+}
+
 // ClientBuildSettingsPayload 是前后端之间传输的客户端生成设置结构。
 type ClientBuildSettingsPayload struct {
 	Server         string `json:"server"`
@@ -49,8 +60,9 @@ type ClientBuildSettingsPayload struct {
 
 // GenerateClientReq 描述一次玩家客户端下载请求。
 type GenerateClientReq struct {
-	PlayerID uint32 `json:"player_id"`
-	Target   string `json:"target"`
+	PlayerID uint32                      `json:"player_id"`
+	Target   string                      `json:"target"`
+	Settings *ClientBuildSettingsPayload `json:"settings,omitempty"`
 }
 
 type PlayerRemoveReq struct {

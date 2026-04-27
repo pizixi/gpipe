@@ -27,28 +27,34 @@ func (s *ClientBuildSettingsStore) Get() (model.ClientBuildSettings, error) {
 		FROM client_build_settings
 		WHERE id = 1`)
 
-	var (
-		settings       model.ClientBuildSettings
-		enableTLS      int
-		useShadowsocks int
-	)
-	if err := row.Scan(
-		&settings.Server,
-		&enableTLS,
-		&settings.TLSServerName,
-		&useShadowsocks,
-		&settings.SSServer,
-		&settings.SSMethod,
-		&settings.SSPassword,
-	); err != nil {
+	settings, err := scanClientBuildSettings(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return defaultClientBuildSettings(), nil
 		}
 		return model.ClientBuildSettings{}, err
 	}
-	settings.EnableTLS = enableTLS == 1
-	settings.UseShadowsocks = useShadowsocks == 1
 	return normalizeClientBuildSettings(settings), nil
+}
+
+// GetForPlayer 读取玩家专属生成配置；未配置时回退到后台全局客户端设置。
+func (s *ClientBuildSettingsStore) GetForPlayer(playerID uint32) (model.ClientBuildSettings, bool, error) {
+	row := s.db.QueryRow(`
+		SELECT server, enable_tls, tls_server_name, use_shadowsocks, ss_server, ss_method, ss_password
+		FROM player_client_build_settings
+		WHERE player_id = ?`,
+		playerID,
+	)
+
+	settings, err := scanClientBuildSettings(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			settings, err := s.Get()
+			return settings, false, err
+		}
+		return model.ClientBuildSettings{}, false, err
+	}
+	return normalizeClientBuildSettings(settings), true, nil
 }
 
 // Save 以 upsert 方式保存当前设置，保证后台始终只有一份有效配置。
@@ -83,6 +89,67 @@ func (s *ClientBuildSettingsStore) Save(settings model.ClientBuildSettings) erro
 		settings.SSPassword,
 	)
 	return err
+}
+
+// SaveForPlayer 保存玩家专属生成配置。后续为该玩家生成客户端时会优先使用这份配置。
+func (s *ClientBuildSettingsStore) SaveForPlayer(playerID uint32, settings model.ClientBuildSettings) error {
+	settings = normalizeClientBuildSettings(settings)
+	_, err := s.db.Exec(`
+		INSERT INTO player_client_build_settings(
+			player_id,
+			server,
+			enable_tls,
+			tls_server_name,
+			use_shadowsocks,
+			ss_server,
+			ss_method,
+			ss_password
+		)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(player_id) DO UPDATE SET
+			server = excluded.server,
+			enable_tls = excluded.enable_tls,
+			tls_server_name = excluded.tls_server_name,
+			use_shadowsocks = excluded.use_shadowsocks,
+			ss_server = excluded.ss_server,
+			ss_method = excluded.ss_method,
+			ss_password = excluded.ss_password`,
+		playerID,
+		settings.Server,
+		boolToInt(settings.EnableTLS),
+		settings.TLSServerName,
+		boolToInt(settings.UseShadowsocks),
+		settings.SSServer,
+		settings.SSMethod,
+		settings.SSPassword,
+	)
+	return err
+}
+
+type clientBuildSettingsScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanClientBuildSettings(scanner clientBuildSettingsScanner) (model.ClientBuildSettings, error) {
+	var (
+		settings       model.ClientBuildSettings
+		enableTLS      int
+		useShadowsocks int
+	)
+	if err := scanner.Scan(
+		&settings.Server,
+		&enableTLS,
+		&settings.TLSServerName,
+		&useShadowsocks,
+		&settings.SSServer,
+		&settings.SSMethod,
+		&settings.SSPassword,
+	); err != nil {
+		return model.ClientBuildSettings{}, err
+	}
+	settings.EnableTLS = enableTLS == 1
+	settings.UseShadowsocks = useShadowsocks == 1
+	return settings, nil
 }
 
 // defaultClientBuildSettings 提供首次启动时的默认配置。
