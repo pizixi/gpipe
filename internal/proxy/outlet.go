@@ -20,6 +20,7 @@ type outletSession struct {
 // Outlet 负责连接出口目标，并把远端返回的数据转成代理消息。
 type Outlet struct {
 	logger      *log.Logger
+	tunnelID    uint32
 	description string
 	output      OutputFunc
 
@@ -224,7 +225,7 @@ func (o *Outlet) readTCP(tunnelID, sessionID uint32, conn net.Conn, common *Sess
 		o.output(O2IDisconnect{TunnelID: tunnelID, ID: sessionID})
 		_ = conn.Close()
 	}()
-	buf := make([]byte, 65535)
+	buf := make([]byte, proxyTCPReadBufferSize)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
@@ -247,7 +248,7 @@ func (o *Outlet) readUDP(tunnelID, sessionID uint32, conn *net.UDPConn, common *
 		o.output(O2IDisconnect{TunnelID: tunnelID, ID: sessionID})
 		_ = conn.Close()
 	}()
-	buf := make([]byte, 65535)
+	buf := make([]byte, proxyUDPReadBufferSize)
 	for {
 		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {

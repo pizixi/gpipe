@@ -80,6 +80,9 @@ export interface TunnelListItem {
   source: string;
   endpoint: string;
   enabled: boolean;
+  runtime_status: 'disabled' | 'waiting' | 'running' | 'failed' | 'starting' | 'unverified' | string;
+  runtime_running: boolean;
+  runtime_message: string;
   sender: number;
   receiver: number;
   description: string;

@@ -307,11 +307,40 @@
   --status-bg-end: #e3f9de;
 }
 
+.dashboard-data-table .status-pill--running {
+  --status-color: #ffffff;
+  --status-border: #16a34a;
+  --status-bg-start: #22c55e;
+  --status-bg-end: #16a34a;
+}
+
 .dashboard-data-table .status-pill--disabled {
   --status-color: #64748b;
   --status-border: #cbd5e1;
   --status-bg-start: #ffffff;
   --status-bg-end: #f1f5f9;
+}
+
+.dashboard-data-table .status-pill--failed {
+  --status-color: #b91c1c;
+  --status-border: #fecaca;
+  --status-bg-start: #fff7f7;
+  --status-bg-end: #fee2e2;
+}
+
+.dashboard-data-table .status-pill--waiting,
+.dashboard-data-table .status-pill--starting {
+  --status-color: #a16207;
+  --status-border: #fde68a;
+  --status-bg-start: #fffdf4;
+  --status-bg-end: #fef3c7;
+}
+
+.dashboard-data-table .status-pill--unverified {
+  --status-color: #475569;
+  --status-border: #cbd5e1;
+  --status-bg-start: #ffffff;
+  --status-bg-end: #e2e8f0;
 }
 
 .dashboard-data-table .table-action-group {

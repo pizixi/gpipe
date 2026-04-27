@@ -91,6 +91,9 @@ type TunnelListItem struct {
 	Source           string            `json:"source"`
 	Endpoint         string            `json:"endpoint"`
 	Enabled          bool              `json:"enabled"`
+	RuntimeStatus    string            `json:"runtime_status"`
+	RuntimeRunning   bool              `json:"runtime_running"`
+	RuntimeMessage   string            `json:"runtime_message"`
 	Sender           uint32            `json:"sender"`
 	Receiver         uint32            `json:"receiver"`
 	Description      string            `json:"description"`

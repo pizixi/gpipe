@@ -110,6 +110,50 @@ func TestUpdateRejectsNonexistentTunnelID(t *testing.T) {
 	}
 }
 
+func TestUpdateAndDeleteClearTunnelRuntime(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_tunnel_manager_clear_runtime?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := NewRuntime(database, tunnelNotifierStub{})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	tunnel, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:1084",
+		Endpoint:         "127.0.0.1:9004",
+		Enabled:          true,
+		Sender:           0,
+		Receiver:         0,
+		TunnelType:       uint32(model.TunnelTypeTCP),
+		IsCompressed:     true,
+		EncryptionMethod: "None",
+	})
+	if err != nil {
+		t.Fatalf("add tunnel: %v", err)
+	}
+
+	rt.TunnelRuntime.SetInlet(tunnel.ID, true, "")
+	tunnel.Enabled = false
+	if err := rt.Tunnel.Update(tunnel); err != nil {
+		t.Fatalf("update tunnel: %v", err)
+	}
+	if _, ok := rt.TunnelRuntime.Get(tunnel.ID); ok {
+		t.Fatalf("expected update to clear runtime status")
+	}
+
+	rt.TunnelRuntime.SetInlet(tunnel.ID, true, "")
+	if err := rt.Tunnel.Delete(tunnel.ID); err != nil {
+		t.Fatalf("delete tunnel: %v", err)
+	}
+	if _, ok := rt.TunnelRuntime.Get(tunnel.ID); ok {
+		t.Fatalf("expected delete to clear runtime status")
+	}
+}
+
 func TestAddShadowsocksDefaultsMethodAndClearsUsername(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_tunnel_manager_shadowsocks?mode=memory&cache=shared")
 	if err != nil {

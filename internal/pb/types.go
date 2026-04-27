@@ -56,8 +56,9 @@ type ManagementLoginReq struct {
 }
 
 type LoginAck struct {
-	PlayerID   uint32    `json:"player_id"`
-	TunnelList []*Tunnel `json:"tunnel_list,omitempty"`
+	PlayerID                    uint32    `json:"player_id"`
+	TunnelList                  []*Tunnel `json:"tunnel_list,omitempty"`
+	SupportsTunnelRuntimeReport bool      `json:"supports_tunnel_runtime_report"`
 }
 
 type ManagementLoginAck struct {
@@ -67,6 +68,13 @@ type ManagementLoginAck struct {
 type ModifyTunnelNtf struct {
 	IsDelete bool    `json:"is_delete"`
 	Tunnel   *Tunnel `json:"tunnel,omitempty"`
+}
+
+type TunnelRuntimeReport struct {
+	TunnelID  uint32 `json:"tunnel_id"`
+	Component string `json:"component"`
+	Running   bool   `json:"running"`
+	Error     string `json:"error"`
 }
 
 type Success struct{}

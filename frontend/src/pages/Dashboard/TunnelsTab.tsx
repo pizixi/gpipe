@@ -23,6 +23,7 @@ import * as tunnelsApi from '../../api/tunnels';
 import AddTunnelModal from '../../modals/AddTunnelModal';
 import EditTunnelModal from '../../modals/EditTunnelModal';
 import StatusPill from '../../components/StatusPill';
+import type { StatusVariant } from '../../components/StatusPill';
 
 const protocolStyles: Record<number, { color: string; background: string }> = {
   0: { color: '#0f766e', background: '#ecfdf5' },
@@ -40,6 +41,7 @@ interface Props {
 }
 
 type PlayerChipVariant = 'online' | 'offline' | 'unknown';
+type RuntimeStatusMeta = { labelKey: string; variant: StatusVariant };
 
 interface PlayerMeta {
   label: string;
@@ -128,6 +130,12 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
 
   useEffect(() => {
     loadTunnels();
+    const timer = setInterval(() => {
+      if (!document.hidden) {
+        loadTunnels();
+      }
+    }, 5000);
+    return () => clearInterval(timer);
   }, [loadTunnels]);
 
   const getPlayerMeta = (id: number): PlayerMeta => {
@@ -173,6 +181,24 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     { value: 'enabled', label: t('enabled') },
     { value: 'disabled', label: t('disabled') },
   ];
+
+  const runtimeStatusMeta = (status: string): RuntimeStatusMeta => {
+    switch (status) {
+      case 'running':
+        return { labelKey: 'runtime_running', variant: 'running' };
+      case 'failed':
+        return { labelKey: 'runtime_failed', variant: 'failed' };
+      case 'waiting':
+        return { labelKey: 'runtime_waiting', variant: 'waiting' };
+      case 'starting':
+        return { labelKey: 'runtime_starting', variant: 'starting' };
+      case 'unverified':
+        return { labelKey: 'runtime_unverified', variant: 'unverified' };
+      case 'disabled':
+      default:
+        return { labelKey: 'runtime_disabled', variant: 'disabled' };
+    }
+  };
 
   const filtered = tunnels.filter((tun) => {
     if (selectedPlayerId !== null && tun.sender !== selectedPlayerId && tun.receiver !== selectedPlayerId) {
@@ -265,12 +291,24 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     );
   };
 
+  const renderRuntimeStatus = (record: TunnelListItem) => {
+    const meta = runtimeStatusMeta(record.runtime_status);
+    const messageText = record.runtime_message || t(meta.labelKey);
+    return (
+      <Tooltip title={messageText}>
+        <span>
+          <StatusPill variant={meta.variant} label={t(meta.labelKey)} />
+        </span>
+      </Tooltip>
+    );
+  };
+
   const columns: ColumnsType<TunnelListItem> = [
     {
       title: t('receiver_id'),
       dataIndex: 'receiver',
       sorter: (a, b) => a.receiver - b.receiver,
-      width: 240,
+      width: 280,
       render: renderPlayerChip,
     },
     {
@@ -295,7 +333,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('sender_id'),
       dataIndex: 'sender',
       sorter: (a, b) => a.sender - b.sender,
-      width: 240,
+      width: 280,
       render: renderPlayerChip,
     },
     {
@@ -313,7 +351,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('protocol_type'),
       dataIndex: 'tunnel_type',
       sorter: (a, b) => a.tunnel_type - b.tunnel_type,
-      width: 170,
+      width: 138,
       render: (value: number) => {
         const label = t(TunnelTypeLabels[value] || 'not_set');
         const style = protocolStyles[value] || { color: '#475569', background: '#f8fafc' };
@@ -331,11 +369,19 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('status'),
       dataIndex: 'enabled',
       sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
-      width: 122,
+      width: 96,
       align: 'center' as const,
       render: (value: boolean) => (
         <StatusPill variant={value ? 'enabled' : 'disabled'} label={t(value ? 'enabled' : 'disabled')} />
       ),
+    },
+    {
+      title: t('runtime_status'),
+      dataIndex: 'runtime_status',
+      sorter: (a, b) => (a.runtime_status ?? '').localeCompare(b.runtime_status ?? ''),
+      width: 126,
+      align: 'center' as const,
+      render: (_, record) => renderRuntimeStatus(record),
     },
     {
       title: t('description'),
@@ -454,7 +500,7 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1566, y: tableScrollY }}
+          scroll={{ x: 1734, y: tableScrollY }}
           locale={{ emptyText: t('empty_tunnels') }}
           bordered
           tableLayout="fixed"

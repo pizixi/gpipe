@@ -314,6 +314,7 @@ func newClientSession(opts Options, conn net.Conn) *clientSession {
 func (s *clientSession) close() {
 	s.closeOnce.Do(func() {
 		if s.proxyMgr != nil {
+			s.proxyMgr.SetRuntimeReporter(nil)
 			s.proxyMgr.Close()
 			s.proxyMgr = nil
 		}
@@ -389,6 +390,19 @@ func (s *clientSession) handleFrame(frame []byte) error {
 			s.proxyMgr = proxy.NewManager(s.opts.Logger, s.playerID, func(playerID uint32, message any) error {
 				return s.send(0, message)
 			})
+			if msg.SupportsTunnelRuntimeReport {
+				s.proxyMgr.SetRuntimeReporter(func(event proxy.TunnelRuntimeEvent) {
+					report := &pb.TunnelRuntimeReport{
+						TunnelID:  event.TunnelID,
+						Component: string(event.Component),
+						Running:   event.Running,
+						Error:     event.Error,
+					}
+					if err := s.send(0, report); err != nil {
+						s.opts.Logger.Printf("send tunnel runtime report failed: %v", err)
+					}
+				})
+			}
 			s.proxyMgr.SyncTunnels(msg.TunnelList)
 			s.opts.Logger.Printf("login successful, player id: %d", s.playerID)
 			return nil

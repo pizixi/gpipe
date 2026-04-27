@@ -128,6 +128,7 @@ func marshalLoginAck(m *pb.LoginAck) ([]byte, error) {
 		}
 		b = appendMessageField(b, 2, payload)
 	}
+	b = appendBoolField(b, 3, m.SupportsTunnelRuntimeReport)
 	return b, nil
 }
 
@@ -161,6 +162,72 @@ func unmarshalLoginAck(data []byte) (*pb.LoginAck, error) {
 				return nil, err
 			}
 			msg.TunnelList = append(msg.TunnelList, tunnel)
+		case 3:
+			if typ != protowire.VarintType {
+				return nil, fieldTypeError(num, typ, protowire.VarintType)
+			}
+			v, err := readVarint(field)
+			if err != nil {
+				return nil, err
+			}
+			msg.SupportsTunnelRuntimeReport = asBool(v)
+		}
+		data = rest
+	}
+	return msg, nil
+}
+
+func marshalTunnelRuntimeReport(m *pb.TunnelRuntimeReport) []byte {
+	var b []byte
+	b = appendUint32Field(b, 1, m.TunnelID)
+	b = appendStringField(b, 2, m.Component)
+	b = appendBoolField(b, 3, m.Running)
+	b = appendStringField(b, 4, m.Error)
+	return b
+}
+
+func unmarshalTunnelRuntimeReport(data []byte) (*pb.TunnelRuntimeReport, error) {
+	msg := &pb.TunnelRuntimeReport{}
+	for len(data) > 0 {
+		num, typ, field, rest, err := consumeField(data)
+		if err != nil {
+			return nil, err
+		}
+		switch num {
+		case 1:
+			if typ != protowire.VarintType {
+				return nil, fieldTypeError(num, typ, protowire.VarintType)
+			}
+			v, err := readVarint(field)
+			if err != nil {
+				return nil, err
+			}
+			msg.TunnelID = uint32(v)
+		case 2:
+			if typ != protowire.BytesType {
+				return nil, fieldTypeError(num, typ, protowire.BytesType)
+			}
+			msg.Component, err = readString(field)
+			if err != nil {
+				return nil, err
+			}
+		case 3:
+			if typ != protowire.VarintType {
+				return nil, fieldTypeError(num, typ, protowire.VarintType)
+			}
+			v, err := readVarint(field)
+			if err != nil {
+				return nil, err
+			}
+			msg.Running = asBool(v)
+		case 4:
+			if typ != protowire.BytesType {
+				return nil, fieldTypeError(num, typ, protowire.BytesType)
+			}
+			msg.Error, err = readString(field)
+			if err != nil {
+				return nil, err
+			}
 		}
 		data = rest
 	}

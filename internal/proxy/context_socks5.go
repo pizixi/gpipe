@@ -331,7 +331,7 @@ func (c *Socks5Context) bindUDPAssociate() error {
 }
 
 func (c *Socks5Context) readUDPAssociate() {
-	buf := make([]byte, 65535)
+	buf := make([]byte, proxyUDPReadBufferSize)
 	for {
 		n, addr, err := c.udpSocket.ReadFromUDP(buf)
 		if err != nil {

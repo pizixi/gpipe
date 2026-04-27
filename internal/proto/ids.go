@@ -7,27 +7,28 @@ import (
 )
 
 const (
-	MsgClientServerLoginReq           uint32 = 1001
-	MsgServerClientLoginAck           uint32 = 1002
-	MsgClientServerRegisterReq        uint32 = 1003
-	MsgClientServerManagementLoginReq uint32 = 1005
-	MsgServerClientManagementLoginAck uint32 = 1006
-	MsgServerClientModifyTunnelNtf    uint32 = 1008
-	MsgGenericSuccess                 uint32 = 150001
-	MsgGenericFail                    uint32 = 150002
-	MsgGenericError                   uint32 = 150003
-	MsgGenericPing                    uint32 = 150004
-	MsgGenericPong                    uint32 = 150005
-	MsgGenericI2OConnect              uint32 = 150006
-	MsgGenericO2IConnect              uint32 = 150007
-	MsgGenericI2OSendData             uint32 = 150008
-	MsgGenericO2IRecvData             uint32 = 150009
-	MsgGenericI2ODisconnect           uint32 = 150010
-	MsgGenericO2IDisconnect           uint32 = 150011
-	MsgGenericO2ISendDataResult       uint32 = 150012
-	MsgGenericI2ORecvDataResult       uint32 = 150013
-	MsgGenericI2OSendToData           uint32 = 150014
-	MsgGenericO2IRecvDataFrom         uint32 = 150015
+	MsgClientServerLoginReq            uint32 = 1001
+	MsgServerClientLoginAck            uint32 = 1002
+	MsgClientServerRegisterReq         uint32 = 1003
+	MsgClientServerManagementLoginReq  uint32 = 1005
+	MsgServerClientManagementLoginAck  uint32 = 1006
+	MsgServerClientModifyTunnelNtf     uint32 = 1008
+	MsgClientServerTunnelRuntimeReport uint32 = 1009
+	MsgGenericSuccess                  uint32 = 150001
+	MsgGenericFail                     uint32 = 150002
+	MsgGenericError                    uint32 = 150003
+	MsgGenericPing                     uint32 = 150004
+	MsgGenericPong                     uint32 = 150005
+	MsgGenericI2OConnect               uint32 = 150006
+	MsgGenericO2IConnect               uint32 = 150007
+	MsgGenericI2OSendData              uint32 = 150008
+	MsgGenericO2IRecvData              uint32 = 150009
+	MsgGenericI2ODisconnect            uint32 = 150010
+	MsgGenericO2IDisconnect            uint32 = 150011
+	MsgGenericO2ISendDataResult        uint32 = 150012
+	MsgGenericI2ORecvDataResult        uint32 = 150013
+	MsgGenericI2OSendToData            uint32 = 150014
+	MsgGenericO2IRecvDataFrom          uint32 = 150015
 )
 
 type Message interface{}
@@ -40,6 +41,8 @@ func MessageID(message Message) (uint32, bool) {
 		return MsgClientServerRegisterReq, true
 	case *pb.ManagementLoginReq:
 		return MsgClientServerManagementLoginReq, true
+	case *pb.TunnelRuntimeReport:
+		return MsgClientServerTunnelRuntimeReport, true
 	case *pb.LoginAck:
 		return MsgServerClientLoginAck, true
 	case *pb.ManagementLoginAck:
@@ -89,6 +92,8 @@ func Encode(message Message) ([]byte, error) {
 		return marshalRegisterReq(m), nil
 	case *pb.ManagementLoginReq:
 		return marshalManagementLoginReq(m), nil
+	case *pb.TunnelRuntimeReport:
+		return marshalTunnelRuntimeReport(m), nil
 	case *pb.LoginAck:
 		return marshalLoginAck(m)
 	case *pb.ManagementLoginAck:
@@ -138,6 +143,8 @@ func Decode(msgID uint32, payload []byte) (Message, error) {
 		return unmarshalRegisterReq(payload)
 	case MsgClientServerManagementLoginReq:
 		return unmarshalManagementLoginReq(payload)
+	case MsgClientServerTunnelRuntimeReport:
+		return unmarshalTunnelRuntimeReport(payload)
 	case MsgServerClientLoginAck:
 		return unmarshalLoginAck(payload)
 	case MsgServerClientManagementLoginAck:

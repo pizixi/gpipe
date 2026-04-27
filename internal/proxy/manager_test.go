@@ -91,6 +91,53 @@ func TestUpdateTunnelTogglesInletRuntimeState(t *testing.T) {
 	waitForTCPState(t, addr, false)
 }
 
+func TestManagerReportsServerInletStartFailure(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	manager := NewManager(logger, 0, func(playerID uint32, message any) error {
+		_ = playerID
+		_ = message
+		return nil
+	})
+
+	events := make(chan TunnelRuntimeEvent, 4)
+	manager.SetRuntimeReporter(func(event TunnelRuntimeEvent) {
+		events <- event
+	})
+
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen occupied port: %v", err)
+	}
+	defer occupied.Close()
+
+	tunnel := &pb.Tunnel{
+		ID:               21,
+		Enabled:          true,
+		Sender:           123,
+		Receiver:         0,
+		TunnelType:       int32(pb.TunnelTypeTCP),
+		Source:           &pb.TunnelPoint{Addr: occupied.Addr().String()},
+		Endpoint:         &pb.TunnelPoint{Addr: "127.0.0.1:9"},
+		EncryptionMethod: "None",
+	}
+	manager.SyncTunnels([]*pb.Tunnel{tunnel})
+	t.Cleanup(func() { manager.SyncTunnels(nil) })
+
+	event := waitForRuntimeEvent(t, events, RuntimeComponentInlet)
+	if event.TunnelID != tunnel.ID {
+		t.Fatalf("event tunnel id = %d, want %d", event.TunnelID, tunnel.ID)
+	}
+	if event.Running {
+		t.Fatalf("expected inlet failure event, got running")
+	}
+	if event.Error == "" {
+		t.Fatalf("expected inlet failure error")
+	}
+	if inlet := waitForInlet(t, manager, tunnel.ID); inlet != nil {
+		t.Fatalf("expected failed inlet to stay uninstalled")
+	}
+}
+
 func TestUpdateTunnelRestartsInletWhenDescriptionChanges(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 	manager := NewManager(logger, 0, func(playerID uint32, message any) error {
@@ -386,6 +433,22 @@ func waitForInlet(t *testing.T, manager *Manager, tunnelID uint32) *Inlet {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return nil
+}
+
+func waitForRuntimeEvent(t *testing.T, events <-chan TunnelRuntimeEvent, component RuntimeComponent) TunnelRuntimeEvent {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event.Component == component {
+				return event
+			}
+		case <-deadline:
+			t.Fatalf("timeout waiting for runtime event %s", component)
+			return TunnelRuntimeEvent{}
+		}
+	}
 }
 
 func waitForUDPPeerSession(t *testing.T, inlet *Inlet, peer string) uint32 {

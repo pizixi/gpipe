@@ -199,7 +199,7 @@ func (i *Inlet) startUDP() error {
 		_ = socket.Close()
 	})
 	i.runAsync(goroutineName("inlet-udp-loop-", i.tunnelID), func() {
-		buf := make([]byte, 65535)
+		buf := make([]byte, proxyUDPReadBufferSize)
 		for {
 			n, peer, err := socket.ReadFromUDP(buf)
 			if err != nil {
@@ -251,7 +251,7 @@ func (i *Inlet) runTCPConn(conn net.Conn) {
 		return
 	}
 
-	buf := make([]byte, 65535)
+	buf := make([]byte, proxyTCPReadBufferSize)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {

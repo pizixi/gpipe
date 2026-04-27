@@ -23,6 +23,7 @@ import (
 	"github.com/pizixi/gpipe/internal/manager"
 	"github.com/pizixi/gpipe/internal/model"
 	"github.com/pizixi/gpipe/internal/pb"
+	"github.com/pizixi/gpipe/internal/proxy"
 )
 
 func TestSessionClosesOnUnknownMessageID(t *testing.T) {
@@ -319,6 +320,75 @@ func TestSelfLoopTunnelStaysEnabledWhenOwnerLogsIn(t *testing.T) {
 	}
 	if len(ack.TunnelList) != 1 || !ack.TunnelList[0].Enabled {
 		t.Fatalf("expected self-loop tunnel to remain enabled, got %+v", ack.TunnelList)
+	}
+}
+
+func TestTunnelRuntimeReportUpdatesClientInletStatus(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_session_client_tunnel_runtime_report?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	_, _, senderID, err := rt.Players.Add("sender", "sender-key")
+	if err != nil {
+		t.Fatalf("add sender: %v", err)
+	}
+	_, _, receiverID, err := rt.Players.Add("receiver", "receiver-key")
+	if err != nil {
+		t.Fatalf("add receiver: %v", err)
+	}
+	tunnel, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:" + freeTCPPort(t),
+		Endpoint:         "127.0.0.1:9",
+		Enabled:          true,
+		Sender:           senderID,
+		Receiver:         receiverID,
+		TunnelType:       uint32(model.TunnelTypeTCP),
+		EncryptionMethod: "None",
+	})
+	if err != nil {
+		t.Fatalf("add tunnel: %v", err)
+	}
+
+	logger := log.New(io.Discard, "", 0)
+	hub := NewHub(logger)
+	hub.SetRuntime(rt)
+
+	session, peer := newQueuedSession(hub, logger)
+	defer peer.Close()
+	defer session.Close()
+
+	reply := session.onLogin(&pb.LoginReq{Password: "receiver-key"})
+	ack, ok := reply.(*pb.LoginAck)
+	if !ok {
+		t.Fatalf("expected login ack, got %T", reply)
+	}
+	if !ack.SupportsTunnelRuntimeReport {
+		t.Fatalf("expected runtime report support flag")
+	}
+
+	session.handleTunnelRuntimeReport(&pb.TunnelRuntimeReport{
+		TunnelID:  tunnel.ID,
+		Component: string(proxy.RuntimeComponentInlet),
+		Running:   false,
+		Error:     "listen tcp 127.0.0.1:1234: bind: address already in use",
+	})
+
+	record, ok := rt.TunnelRuntime.Get(tunnel.ID)
+	if !ok {
+		t.Fatalf("expected runtime record")
+	}
+	if record.InletRunning {
+		t.Fatalf("expected inlet running=false")
+	}
+	if record.InletError == "" {
+		t.Fatalf("expected inlet error")
 	}
 }
 

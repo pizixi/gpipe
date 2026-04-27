@@ -4,12 +4,30 @@ import (
 	"log"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/pizixi/gpipe/internal/model"
 	"github.com/pizixi/gpipe/internal/pb"
 )
 
 type RemoteSender func(playerID uint32, message any) error
+
+type RuntimeComponent string
+
+const (
+	RuntimeComponentInlet  RuntimeComponent = "inlet"
+	RuntimeComponentOutlet RuntimeComponent = "outlet"
+)
+
+type TunnelRuntimeEvent struct {
+	TunnelID  uint32
+	Component RuntimeComponent
+	Running   bool
+	Error     string
+	At        time.Time
+}
+
+type RuntimeReporter func(event TunnelRuntimeEvent)
 
 // Manager 对齐 Rust 中 client/proxy_manager 的隧道同步逻辑。
 type Manager struct {
@@ -21,6 +39,7 @@ type Manager struct {
 	tunnels map[uint32]*pb.Tunnel
 	inlets  map[uint32]*Inlet
 	outlets map[uint32]*Outlet
+	report  RuntimeReporter
 }
 
 func NewManager(logger *log.Logger, selfPlayerID uint32, sendRemote RemoteSender) *Manager {
@@ -32,6 +51,12 @@ func NewManager(logger *log.Logger, selfPlayerID uint32, sendRemote RemoteSender
 		inlets:       map[uint32]*Inlet{},
 		outlets:      map[uint32]*Outlet{},
 	}
+}
+
+func (m *Manager) SetRuntimeReporter(report RuntimeReporter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.report = report
 }
 
 func (m *Manager) Close() {
@@ -73,9 +98,11 @@ func (m *Manager) SyncTunnels(tunnels []*pb.Tunnel) {
 
 	for _, outlet := range stopOutlets {
 		_ = outlet.Stop()
+		m.reportRuntime(outlet.tunnelID, RuntimeComponentOutlet, false, "")
 	}
 	for _, inlet := range stopInlets {
 		_ = inlet.Stop()
+		m.reportRuntime(inlet.tunnelID, RuntimeComponentInlet, false, "")
 	}
 
 	for _, tunnel := range tunnels {
@@ -141,9 +168,11 @@ func (m *Manager) UpdateTunnel(msg *pb.ModifyTunnelNtf) {
 
 	if stopOutlet != nil {
 		_ = stopOutlet.Stop()
+		m.reportRuntime(stopOutlet.tunnelID, RuntimeComponentOutlet, false, "")
 	}
 	if stopInlet != nil {
 		_ = stopInlet.Stop()
+		m.reportRuntime(stopInlet.tunnelID, RuntimeComponentInlet, false, "")
 	}
 	if msg.IsDelete {
 		return
@@ -184,13 +213,19 @@ func (m *Manager) startOutletIfNeeded(tunnel *pb.Tunnel) {
 	outlet := NewOutlet(m.logger, func(msg ProxyMessage) {
 		m.routeProxyMessage(tunnel, msg)
 	}, outletDescription(tunnel))
+	outlet.tunnelID = tunnel.ID
 
+	installed := false
 	m.mu.Lock()
 	current = m.tunnels[tunnel.ID]
 	if _, exists := m.outlets[tunnel.ID]; !exists && current != nil && m.shouldRunOutlet(current) && outletDescription(current) == outletDescription(tunnel) {
 		m.outlets[tunnel.ID] = outlet
+		installed = true
 	}
 	m.mu.Unlock()
+	if installed {
+		m.reportRuntime(tunnel.ID, RuntimeComponentOutlet, true, "")
+	}
 }
 
 func (m *Manager) startInletIfNeeded(tunnel *pb.Tunnel) {
@@ -212,6 +247,7 @@ func (m *Manager) startInletIfNeeded(tunnel *pb.Tunnel) {
 	common, err := NewSessionCommonInfoFromName(tunnel.IsCompressed, commonMethod)
 	if err != nil {
 		m.logger.Printf("创建入口公共配置失败: %v", err)
+		m.reportRuntime(tunnel.ID, RuntimeComponentInlet, false, err.Error())
 		return
 	}
 	source := ""
@@ -242,6 +278,7 @@ func (m *Manager) startInletIfNeeded(tunnel *pb.Tunnel) {
 	m.logger.Printf("启动入口 tunnel=%d self=%d source=%s endpoint=%s", tunnel.ID, m.selfPlayerID, source, endpoint)
 	if err := inlet.Start(); err != nil {
 		m.logger.Printf("启动入口失败: %v", err)
+		m.reportRuntime(tunnel.ID, RuntimeComponentInlet, false, err.Error())
 		return
 	}
 	installed := false
@@ -254,7 +291,29 @@ func (m *Manager) startInletIfNeeded(tunnel *pb.Tunnel) {
 	m.mu.Unlock()
 	if !installed {
 		_ = inlet.Stop()
+		m.reportRuntime(tunnel.ID, RuntimeComponentInlet, false, "")
+		return
 	}
+	m.reportRuntime(tunnel.ID, RuntimeComponentInlet, true, "")
+}
+
+func (m *Manager) reportRuntime(tunnelID uint32, component RuntimeComponent, running bool, errMessage string) {
+	if tunnelID == 0 {
+		return
+	}
+	m.mu.RLock()
+	report := m.report
+	m.mu.RUnlock()
+	if report == nil {
+		return
+	}
+	report(TunnelRuntimeEvent{
+		TunnelID:  tunnelID,
+		Component: component,
+		Running:   running,
+		Error:     errMessage,
+		At:        time.Now().UTC(),
+	})
 }
 
 func (m *Manager) routeProxyMessage(tunnel *pb.Tunnel, message ProxyMessage) {

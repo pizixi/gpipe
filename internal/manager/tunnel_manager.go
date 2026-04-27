@@ -18,16 +18,18 @@ type TunnelNotifier interface {
 type TunnelManager struct {
 	store    *store.TunnelStore
 	notifier TunnelNotifier
+	runtime  *TunnelRuntimeStore
 	players  *PlayerManager
 	mu       sync.RWMutex
 	tunnels  []model.Tunnel
 	lookup   map[uint32]model.Tunnel
 }
 
-func NewTunnelManager(tunnelStore *store.TunnelStore, players *PlayerManager, notifier TunnelNotifier) *TunnelManager {
+func NewTunnelManager(tunnelStore *store.TunnelStore, players *PlayerManager, notifier TunnelNotifier, runtime *TunnelRuntimeStore) *TunnelManager {
 	return &TunnelManager{
 		store:    tunnelStore,
 		notifier: notifier,
+		runtime:  runtime,
 		players:  players,
 		lookup:   map[uint32]model.Tunnel{},
 	}
@@ -145,6 +147,7 @@ func (m *TunnelManager) Update(tunnel model.Tunnel) error {
 		m.mu.Unlock()
 		return err
 	}
+	m.clearRuntime(tunnel.ID)
 	for i := range m.tunnels {
 		if m.tunnels[i].ID == tunnel.ID {
 			m.tunnels[i] = tunnel
@@ -168,6 +171,7 @@ func (m *TunnelManager) Delete(id uint32) error {
 	if err := m.store.Delete(id); err != nil {
 		return err
 	}
+	m.clearRuntime(id)
 	m.mu.Lock()
 	for i, tunnel := range m.tunnels {
 		if tunnel.ID == id {
@@ -180,6 +184,13 @@ func (m *TunnelManager) Delete(id uint32) error {
 	}
 	m.mu.Unlock()
 	return nil
+}
+
+func (m *TunnelManager) clearRuntime(tunnelID uint32) {
+	if m.runtime == nil {
+		return
+	}
+	m.runtime.Clear(tunnelID)
 }
 
 func (m *TunnelManager) validateStatic(tunnel model.Tunnel) error {

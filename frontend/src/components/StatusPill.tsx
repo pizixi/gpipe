@@ -1,6 +1,6 @@
 import React from 'react';
 
-type StatusVariant = 'online' | 'offline' | 'enabled' | 'disabled';
+export type StatusVariant = 'online' | 'offline' | 'enabled' | 'disabled' | 'running' | 'failed' | 'waiting' | 'starting' | 'unverified';
 
 interface Props {
   label: string;
@@ -25,6 +25,7 @@ const StatusPill: React.FC<Props> = ({ label, variant }) => {
           </svg>
         );
       case 'enabled':
+      case 'running':
         return (
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <circle cx="8" cy="8" r="5.6" stroke="currentColor" strokeWidth="1.3" />
@@ -32,10 +33,20 @@ const StatusPill: React.FC<Props> = ({ label, variant }) => {
           </svg>
         );
       case 'disabled':
+      case 'failed':
         return (
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <circle cx="8" cy="8" r="5.6" stroke="currentColor" strokeWidth="1.3" />
             <path d="M6 6h4v4H6z" fill="currentColor" />
+          </svg>
+        );
+      case 'waiting':
+      case 'starting':
+      case 'unverified':
+        return (
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="5.6" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M8 4.8v3.6l2.3 1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         );
       default:

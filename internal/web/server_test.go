@@ -397,6 +397,80 @@ func TestTunnelListFiltersByPlayerID(t *testing.T) {
 	}
 }
 
+func TestTunnelListReturnsRuntimeStatus(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_web_tunnel_runtime_status?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	_, _, senderID, err := rt.Players.Add("sender", "sender-key")
+	if err != nil {
+		t.Fatalf("add sender: %v", err)
+	}
+	rt.Players.Bind(senderID, playerSessionStub{})
+	tunnel, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:10080",
+		Endpoint:         "127.0.0.1:18080",
+		Enabled:          true,
+		Sender:           senderID,
+		Receiver:         0,
+		Description:      "server inlet failed",
+		TunnelType:       uint32(model.TunnelTypeTCP),
+		IsCompressed:     true,
+		EncryptionMethod: "None",
+	})
+	if err != nil {
+		t.Fatalf("add tunnel: %v", err)
+	}
+	rt.TunnelRuntime.SetInlet(tunnel.ID, false, "listen tcp 127.0.0.1:10080: bind: address already in use")
+
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin",
+		WebPassword: "secret",
+	}, rt)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/tunnel_list",
+		strings.NewReader(`{"page_number":0,"page_size":0}`),
+	)
+	req.AddCookie(&http.Cookie{
+		Name:  authCookieName,
+		Value: service.signedCookieValue(time.Now().Add(time.Minute)),
+	})
+	recorder := httptest.NewRecorder()
+
+	service.tunnelList(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var resp TunnelListResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Tunnels) != 1 {
+		t.Fatalf("len(tunnels) = %d, want %d", len(resp.Tunnels), 1)
+	}
+	item := resp.Tunnels[0]
+	if item.RuntimeStatus != tunnelRuntimeFailed {
+		t.Fatalf("runtime status = %q, want %q", item.RuntimeStatus, tunnelRuntimeFailed)
+	}
+	if item.RuntimeRunning {
+		t.Fatalf("expected runtime_running=false for failed inlet")
+	}
+	if !strings.Contains(item.RuntimeMessage, "address already in use") {
+		t.Fatalf("runtime message = %q, want bind error", item.RuntimeMessage)
+	}
+}
+
 func TestPlayerListPageSizeZeroReturnsAllPlayers(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_web_player_list?mode=memory&cache=shared")
 	if err != nil {

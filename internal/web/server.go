@@ -34,6 +34,15 @@ const maxJSONBodyBytes int64 = 1 << 20
 
 const webIndexTemplateName = "layout/page"
 
+const (
+	tunnelRuntimeDisabled   = "disabled"
+	tunnelRuntimeWaiting    = "waiting"
+	tunnelRuntimeRunning    = "running"
+	tunnelRuntimeFailed     = "failed"
+	tunnelRuntimeStarting   = "starting"
+	tunnelRuntimeUnverified = "unverified"
+)
+
 type Service struct {
 	cfg          *config.ServerConfig
 	rt           *manager.Runtime
@@ -504,11 +513,15 @@ func (s *Service) tunnelList(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]TunnelListItem, 0, len(tunnels))
 	for _, tunnel := range tunnels {
+		runtimeStatus, runtimeRunning, runtimeMessage := s.tunnelRuntimeStatus(tunnel)
 		items = append(items, TunnelListItem{
 			ID:               tunnel.ID,
 			Source:           tunnel.Source,
 			Endpoint:         tunnel.Endpoint,
 			Enabled:          tunnel.Enabled,
+			RuntimeStatus:    runtimeStatus,
+			RuntimeRunning:   runtimeRunning,
+			RuntimeMessage:   runtimeMessage,
 			Sender:           tunnel.Sender,
 			Receiver:         tunnel.Receiver,
 			Description:      tunnel.Description,
@@ -525,6 +538,51 @@ func (s *Service) tunnelList(w http.ResponseWriter, r *http.Request) {
 		CurPageNumber: req.PageNumber,
 		TotalCount:    totalCount,
 	})
+}
+
+func (s *Service) tunnelRuntimeStatus(tunnel model.Tunnel) (string, bool, string) {
+	if !tunnel.Enabled {
+		return tunnelRuntimeDisabled, false, "tunnel is disabled"
+	}
+	if !s.playerAvailable(tunnel.Sender) {
+		return tunnelRuntimeWaiting, false, "sender player is offline"
+	}
+	if !s.playerAvailable(tunnel.Receiver) {
+		return tunnelRuntimeWaiting, false, "receiver player is offline"
+	}
+
+	// 入口在服务端时，服务端本地 proxy manager 可以准确记录监听是否成功。
+	if tunnel.Receiver == 0 {
+		if s.rt != nil && s.rt.TunnelRuntime != nil {
+			record, ok := s.rt.TunnelRuntime.Get(tunnel.ID)
+			if ok && record.InletError != "" {
+				return tunnelRuntimeFailed, false, record.InletError
+			}
+			if ok && record.InletRunning {
+				return tunnelRuntimeRunning, true, "server inlet is listening"
+			}
+		}
+		return tunnelRuntimeStarting, false, "server inlet is starting or waiting for runtime sync"
+	}
+
+	// 入口在客户端时，旧客户端协议不会回报本地监听结果；服务端只能确认配置已下发且玩家在线。
+	if s.rt != nil && s.rt.TunnelRuntime != nil {
+		record, ok := s.rt.TunnelRuntime.Get(tunnel.ID)
+		if ok && record.InletError != "" {
+			return tunnelRuntimeFailed, false, record.InletError
+		}
+		if ok && record.InletRunning {
+			return tunnelRuntimeRunning, true, "client inlet reported listening"
+		}
+	}
+	return tunnelRuntimeUnverified, false, "waiting for client-side inlet runtime report"
+}
+
+func (s *Service) playerAvailable(playerID uint32) bool {
+	if playerID == 0 {
+		return true
+	}
+	return s.rt != nil && s.rt.Players.IsOnline(playerID)
 }
 
 func (s *Service) removeTunnel(w http.ResponseWriter, r *http.Request) {

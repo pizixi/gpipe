@@ -52,6 +52,17 @@ func (h *Hub) SetRuntime(rt *manager.Runtime) {
 		}
 		return session.SendPush(message)
 	})
+	h.proxyMgr.SetRuntimeReporter(func(event proxy.TunnelRuntimeEvent) {
+		if h.runtime == nil || h.runtime.TunnelRuntime == nil {
+			return
+		}
+		switch event.Component {
+		case proxy.RuntimeComponentInlet:
+			h.runtime.TunnelRuntime.SetInlet(event.TunnelID, event.Running, event.Error)
+		case proxy.RuntimeComponentOutlet:
+			h.runtime.TunnelRuntime.SetOutlet(event.TunnelID, event.Running, event.Error)
+		}
+	})
 	var tunnels []*pb.Tunnel
 	for _, tunnel := range rt.Tunnel.All() {
 		if tunnel.Sender == 0 || tunnel.Receiver == 0 {
@@ -316,6 +327,10 @@ func (s *Session) handlePush(message proto.Message) error {
 	if s.playerID == 0 {
 		return nil
 	}
+	if report, ok := message.(*pb.TunnelRuntimeReport); ok {
+		s.handleTunnelRuntimeReport(report)
+		return nil
+	}
 	tunnelID, fromPlayer, toPlayer, ok := s.resolveRoute(message)
 	if !ok {
 		return nil
@@ -334,6 +349,30 @@ func (s *Session) handlePush(message proto.Message) error {
 		return s.handleOfflineProxy(message, tunnelID, fromPlayer)
 	}
 	return nil
+}
+
+func (s *Session) handleTunnelRuntimeReport(report *pb.TunnelRuntimeReport) {
+	if report == nil || report.TunnelID == 0 || s.hub.runtime == nil || s.hub.runtime.TunnelRuntime == nil {
+		return
+	}
+	tunnel, ok := s.hub.runtime.Tunnel.Get(report.TunnelID)
+	if !ok {
+		return
+	}
+	switch report.Component {
+	case string(proxy.RuntimeComponentInlet):
+		if tunnel.Receiver != s.playerID {
+			return
+		}
+		s.hub.runtime.TunnelRuntime.SetInlet(report.TunnelID, report.Running, report.Error)
+	case string(proxy.RuntimeComponentOutlet):
+		if tunnel.Sender != s.playerID {
+			return
+		}
+		s.hub.runtime.TunnelRuntime.SetOutlet(report.TunnelID, report.Running, report.Error)
+	default:
+		return
+	}
 }
 
 func (s *Session) resolveRoute(message proto.Message) (uint32, uint32, uint32, bool) {
@@ -423,7 +462,10 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 	s.hub.registerPlayer(user.ID, s)
 	s.hub.runtime.Players.Bind(user.ID, s)
 	tunnels := s.hub.runtime.Tunnel.ByPlayer(user.ID)
-	reply := &pb.LoginAck{PlayerID: user.ID}
+	reply := &pb.LoginAck{
+		PlayerID:                    user.ID,
+		SupportsTunnelRuntimeReport: true,
+	}
 	for _, tunnel := range tunnels {
 		reply.TunnelList = append(reply.TunnelList, s.hub.runtimeTunnelPB(tunnel))
 	}

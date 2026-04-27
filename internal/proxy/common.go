@@ -10,6 +10,11 @@ import (
 
 var errFlowControllerClosed = errors.New("flow controller closed")
 
+const (
+	proxyTCPReadBufferSize = 65535
+	proxyUDPReadBufferSize = 65535
+)
+
 // FlowController 用于限制尚未被对端确认的数据量。
 type FlowController struct {
 	maxBytes int

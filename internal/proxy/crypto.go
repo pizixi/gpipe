@@ -67,6 +67,9 @@ func GenerateKey(method EncryptionMethod) ([]byte, error) {
 
 // CompressData 使用 LZ4 带长度前缀的块格式，对齐 Rust 的 lz4_flex::compress_prepend_size。
 func CompressData(input []byte) ([]byte, error) {
+	if len(input) == 0 {
+		return []byte{0, 0, 0, 0}, nil
+	}
 	maxSize := lz4.CompressBlockBound(len(input))
 	out := make([]byte, 4+maxSize)
 	binary.LittleEndian.PutUint32(out[:4], uint32(len(input)))
@@ -75,8 +78,7 @@ func CompressData(input []byte) ([]byte, error) {
 		return nil, err
 	}
 	if n == 0 {
-		copy(out[4:], input)
-		return out[:4+len(input)], nil
+		return appendLZ4LiteralBlock(out[:4], input), nil
 	}
 	return out[:4+n], nil
 }
@@ -87,17 +89,45 @@ func DecompressData(input []byte) ([]byte, error) {
 		return nil, fmt.Errorf("压缩数据长度不足")
 	}
 	size := int(binary.LittleEndian.Uint32(input[:4]))
+	if size == 0 {
+		return []byte{}, nil
+	}
 	out := make([]byte, size)
-	n, err := lz4.UncompressBlock(input[4:], out)
+	payload := input[4:]
+	n, err := lz4.UncompressBlock(payload, out)
 	if err != nil {
-		// Rust 在某些极端情况下会保留原始块，这里兼容该行为。
-		if len(input[4:]) == size {
-			copy(out, input[4:])
+		// 早期 Go 客户端在 LZ4 不可压缩时会直接发送原始块，这里兼容已部署客户端。
+		if len(payload) == size {
+			copy(out, payload)
 			return out, nil
 		}
 		return nil, err
 	}
+	if n != size {
+		if len(payload) == size {
+			copy(out, payload)
+			return out, nil
+		}
+		return nil, fmt.Errorf("LZ4 解压长度不匹配: got=%d want=%d", n, size)
+	}
 	return out[:n], nil
+}
+
+func appendLZ4LiteralBlock(out []byte, input []byte) []byte {
+	literalLen := len(input)
+	if literalLen < 15 {
+		out = append(out, byte(literalLen<<4))
+		return append(out, input...)
+	}
+
+	out = append(out, 15<<4)
+	remaining := literalLen - 15
+	for remaining >= 255 {
+		out = append(out, 255)
+		remaining -= 255
+	}
+	out = append(out, byte(remaining))
+	return append(out, input...)
 }
 
 // Encrypt 对齐 Rust 中的加密逻辑。
