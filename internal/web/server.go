@@ -335,7 +335,6 @@ func (s *Service) playerList(w http.ResponseWriter, r *http.Request) {
 			Key:            user.Key,
 			CreateTime:     user.CreateTime,
 			LastOnlineTime: user.LastOnlineTime,
-			LastIP:         user.LastIP,
 			Online:         s.rt.Players.IsOnline(user.ID),
 		})
 	}

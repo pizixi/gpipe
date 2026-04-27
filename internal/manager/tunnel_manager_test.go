@@ -212,6 +212,69 @@ func TestAddRejectsUnsupportedShadowsocksMethod(t *testing.T) {
 	}
 }
 
+func TestPortConflictAccountsForShadowsocksTCPAndUDPListeners(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_tunnel_manager_shadowsocks_port_conflict?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := NewRuntime(database, tunnelNotifierStub{})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	if _, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:5080",
+		Endpoint:         "127.0.0.1:9000",
+		Enabled:          true,
+		Sender:           0,
+		Receiver:         0,
+		TunnelType:       uint32(model.TunnelTypeUDP),
+		IsCompressed:     true,
+		EncryptionMethod: "None",
+	}); err != nil {
+		t.Fatalf("add udp tunnel: %v", err)
+	}
+
+	if _, err := rt.Tunnel.Add(model.Tunnel{
+		Source:     "127.0.0.1:5080",
+		Enabled:    true,
+		Sender:     0,
+		Receiver:   0,
+		TunnelType: uint32(model.TunnelTypeShadowsocks),
+		Password:   "secret",
+	}); err == nil || err.Error() != "port already in use" {
+		t.Fatalf("expected shadowsocks to conflict with existing udp listener, got err=%v", err)
+	}
+
+	if _, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:5081",
+		Endpoint:         "127.0.0.1:9001",
+		Enabled:          true,
+		Sender:           0,
+		Receiver:         0,
+		TunnelType:       uint32(model.TunnelTypeTCP),
+		IsCompressed:     true,
+		EncryptionMethod: "None",
+	}); err != nil {
+		t.Fatalf("expected tcp and udp to share the same port number: %v", err)
+	}
+
+	if _, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:5081",
+		Endpoint:         "127.0.0.1:9002",
+		Enabled:          true,
+		Sender:           0,
+		Receiver:         0,
+		TunnelType:       uint32(model.TunnelTypeUDP),
+		IsCompressed:     true,
+		EncryptionMethod: "None",
+	}); err != nil {
+		t.Fatalf("expected tcp and udp to share the same port number: %v", err)
+	}
+}
+
 func TestQueryClampsNegativePageNumber(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_tunnel_manager_negative_page?mode=memory&cache=shared")
 	if err != nil {

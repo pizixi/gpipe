@@ -3,7 +3,6 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pizixi/gpipe/internal/model"
@@ -31,7 +30,7 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 	}
 
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time, last_online_time, last_ip
+		SELECT id, username, password, create_time, last_online_time
 		FROM user
 		ORDER BY create_time DESC, id DESC
 		LIMIT ? OFFSET ?`, pageSize, pageNumber*pageSize)
@@ -53,7 +52,7 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 
 func (s *UserStore) FindByKey(key string) (*model.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time, last_online_time, last_ip
+		SELECT id, username, password, create_time, last_online_time
 		FROM user
 		WHERE password = ?
 		ORDER BY id
@@ -92,7 +91,7 @@ func (s *UserStore) FindByKey(key string) (*model.User, error) {
 
 func (s *UserStore) FindByRemark(remark string) (*model.User, error) {
 	row := s.db.QueryRow(`
-		SELECT id, username, password, create_time, last_online_time, last_ip
+		SELECT id, username, password, create_time, last_online_time
 		FROM user
 		WHERE username = ?`,
 		remark,
@@ -109,7 +108,7 @@ func (s *UserStore) FindByRemark(remark string) (*model.User, error) {
 
 func (s *UserStore) FindByID(id uint32) (*model.User, error) {
 	row := s.db.QueryRow(`
-		SELECT id, username, password, create_time, last_online_time, last_ip
+		SELECT id, username, password, create_time, last_online_time
 		FROM user
 		WHERE id = ?`,
 		id,
@@ -126,7 +125,7 @@ func (s *UserStore) FindByID(id uint32) (*model.User, error) {
 
 func (s *UserStore) FindAll() ([]model.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time, last_online_time, last_ip
+		SELECT id, username, password, create_time, last_online_time
 		FROM user
 		ORDER BY create_time DESC, id DESC`)
 	if err != nil {
@@ -147,14 +146,13 @@ func (s *UserStore) FindAll() ([]model.User, error) {
 
 func (s *UserStore) Insert(user model.User) error {
 	_, err := s.db.Exec(`
-		INSERT INTO user(id, username, password, create_time, last_online_time, last_ip)
-		VALUES(?, ?, ?, ?, ?, ?)`,
+		INSERT INTO user(id, username, password, create_time, last_online_time)
+		VALUES(?, ?, ?, ?, ?)`,
 		user.ID,
 		user.Remark,
 		user.Key,
 		user.CreateTime.UTC().Format(time.RFC3339Nano),
 		formatOptionalTime(user.LastOnlineTime),
-		strings.TrimSpace(user.LastIP),
 	)
 	return err
 }
@@ -179,13 +177,12 @@ func (s *UserStore) Update(update model.PlayerUpdate) error {
 	return nil
 }
 
-func (s *UserStore) UpdateLoginInfo(id uint32, at time.Time, ip string) error {
+func (s *UserStore) UpdateLoginInfo(id uint32, at time.Time) error {
 	result, err := s.db.Exec(`
 		UPDATE user
-		SET last_online_time = ?, last_ip = ?
+		SET last_online_time = ?
 		WHERE id = ?`,
 		at.UTC().Format(time.RFC3339Nano),
-		strings.TrimSpace(ip),
 		id,
 	)
 	if err != nil {
@@ -225,7 +222,6 @@ func scanUser(scanner userScanner) (model.User, error) {
 		user           model.User
 		createTime     string
 		lastOnlineTime sql.NullString
-		lastIP         sql.NullString
 	)
 	if err := scanner.Scan(
 		&user.ID,
@@ -233,18 +229,14 @@ func scanUser(scanner userScanner) (model.User, error) {
 		&user.Key,
 		&createTime,
 		&lastOnlineTime,
-		&lastIP,
 	); err != nil {
 		return model.User{}, err
 	}
 	user.CreateTime, _ = time.Parse(time.RFC3339Nano, createTime)
-	if lastOnlineTime.Valid && strings.TrimSpace(lastOnlineTime.String) != "" {
+	if lastOnlineTime.Valid && lastOnlineTime.String != "" {
 		if ts, err := time.Parse(time.RFC3339Nano, lastOnlineTime.String); err == nil {
 			user.LastOnlineTime = &ts
 		}
-	}
-	if lastIP.Valid {
-		user.LastIP = strings.TrimSpace(lastIP.String)
 	}
 	return user, nil
 }

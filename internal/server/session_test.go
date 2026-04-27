@@ -392,6 +392,56 @@ func TestTunnelRuntimeReportUpdatesClientInletStatus(t *testing.T) {
 	}
 }
 
+func TestPlayerLogoutClearsClientRuntimeStatus(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_session_clear_client_runtime_on_logout?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	_, _, receiverID, err := rt.Players.Add("receiver", "receiver-key")
+	if err != nil {
+		t.Fatalf("add receiver: %v", err)
+	}
+	tunnel, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:" + freeTCPPort(t),
+		Endpoint:         "127.0.0.1:9",
+		Enabled:          true,
+		Sender:           0,
+		Receiver:         receiverID,
+		TunnelType:       uint32(model.TunnelTypeTCP),
+		EncryptionMethod: "None",
+	})
+	if err != nil {
+		t.Fatalf("add tunnel: %v", err)
+	}
+	rt.TunnelRuntime.SetInlet(tunnel.ID, true, "")
+
+	logger := log.New(io.Discard, "", 0)
+	hub := NewHub(logger)
+	hub.SetRuntime(rt)
+
+	session, peer := newQueuedSession(hub, logger)
+	defer peer.Close()
+	reply := session.onLogin(&pb.LoginReq{Password: "receiver-key"})
+	if _, ok := reply.(*pb.LoginAck); !ok {
+		t.Fatalf("expected login ack, got %T", reply)
+	}
+
+	if err := session.Close(); err != nil {
+		t.Fatalf("close session: %v", err)
+	}
+	record, ok := rt.TunnelRuntime.Get(tunnel.ID)
+	if ok && (record.InletRunning || record.InletError != "") {
+		t.Fatalf("expected stale client inlet runtime to be cleared, got %+v", record)
+	}
+}
+
 func TestTunnelNotifierSendsSingleRuntimeUpdatePerPeer(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_session_tunnel_notifier_single_push?mode=memory&cache=shared")
 	if err != nil {

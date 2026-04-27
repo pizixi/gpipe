@@ -629,7 +629,7 @@ func TestPlayerListReturnsClientLoginInfo(t *testing.T) {
 		t.Fatalf("add player: %v", err)
 	}
 	lastOnline := time.Date(2026, time.April, 27, 15, 38, 32, 0, time.UTC)
-	if err := rt.Players.RecordLogin(playerID, "203.0.113.10", lastOnline); err != nil {
+	if err := rt.Players.RecordLogin(playerID, lastOnline); err != nil {
 		t.Fatalf("record login info: %v", err)
 	}
 
@@ -663,9 +663,6 @@ func TestPlayerListReturnsClientLoginInfo(t *testing.T) {
 		t.Fatalf("len(players) = %d, want %d", len(resp.Players), 1)
 	}
 	player := resp.Players[0]
-	if player.LastIP != "203.0.113.10" {
-		t.Fatalf("last_ip = %q, want %q", player.LastIP, "203.0.113.10")
-	}
 	if player.LastOnlineTime == nil || !player.LastOnlineTime.Equal(lastOnline) {
 		t.Fatalf("last_online_time = %v, want %v", player.LastOnlineTime, lastOnline)
 	}

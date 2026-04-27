@@ -76,7 +76,6 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
     return (
       String(player.id).includes(keyword)
       || (player.remark ?? '').toLowerCase().includes(keyword)
-      || (player.last_ip ?? '').toLowerCase().includes(keyword)
     );
   });
   const sortedPlayers = filtered.slice().sort(comparePlayersByDefault);
@@ -137,6 +136,16 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       width: 180,
     },
     {
+      title: t('last_online_time'),
+      dataIndex: 'last_online_time',
+      sorter: (a, b) => getOptionalTimeMs(a.last_online_time) - getOptionalTimeMs(b.last_online_time),
+      render: (value: string | null) => {
+        const text = formatDateTime(value);
+        return text || <span className="player-meta-empty">-</span>;
+      },
+      width: 180,
+    },
+    {
       title: t('player_remark'),
       dataIndex: 'remark',
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? '', 'zh-CN'),
@@ -151,26 +160,6 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
           </span>
         );
       },
-    },
-    {
-      title: t('last_online_time'),
-      dataIndex: 'last_online_time',
-      sorter: (a, b) => getOptionalTimeMs(a.last_online_time) - getOptionalTimeMs(b.last_online_time),
-      render: (value: string | null) => {
-        const text = formatDateTime(value);
-        return text || <span className="player-meta-empty">-</span>;
-      },
-      width: 180,
-    },
-    {
-      title: t('client_ip'),
-      dataIndex: 'last_ip',
-      ellipsis: true,
-      sorter: (a, b) => (a.last_ip ?? '').localeCompare(b.last_ip ?? ''),
-      render: (value: string) => (
-        value ? <span className="player-client-ip">{value}</span> : <span className="player-meta-empty">-</span>
-      ),
-      width: 156,
     },
     {
       title: t('online_status'),
@@ -239,7 +228,7 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1360, y: tableScrollY }}
+          scroll={{ x: 1200, y: tableScrollY }}
           locale={{ emptyText: t('empty_players') }}
           bordered
           tableLayout="fixed"

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -152,6 +151,15 @@ func (h *Hub) broadcastPlayerTunnelStates(playerID, skipPlayerID uint32) {
 	}
 }
 
+func (h *Hub) clearPlayerTunnelRuntime(playerID uint32) {
+	if h.runtime == nil || h.runtime.TunnelRuntime == nil || playerID == 0 {
+		return
+	}
+	for _, tunnel := range h.runtime.Tunnel.ByPlayer(playerID) {
+		h.runtime.TunnelRuntime.Clear(tunnel.ID)
+	}
+}
+
 func (h *Hub) playerAvailable(playerID uint32) bool {
 	if playerID == 0 {
 		return true
@@ -193,6 +201,7 @@ func (s *Session) Close() error {
 			s.hub.unregisterPlayer(playerID, s)
 			if s.hub.runtime != nil {
 				s.hub.runtime.Players.Unbind(playerID, s)
+				s.hub.clearPlayerTunnelRuntime(playerID)
 				s.hub.broadcastPlayerTunnelStates(playerID, playerID)
 			}
 		}
@@ -460,7 +469,7 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 		return &pb.Error{Number: -2, Message: "Incorrect key"}
 	}
 	s.playerID = user.ID
-	if err := s.hub.runtime.Players.RecordLogin(user.ID, sessionClientIP(s.conn), time.Now().UTC()); err != nil {
+	if err := s.hub.runtime.Players.RecordLogin(user.ID, time.Now().UTC()); err != nil {
 		s.logger.Printf("record player login info failed: player=%d err=%v", user.ID, err)
 	}
 	s.hub.registerPlayer(user.ID, s)
@@ -475,18 +484,6 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 	}
 	s.hub.broadcastPlayerTunnelStates(user.ID, user.ID)
 	return reply
-}
-
-func sessionClientIP(conn net.Conn) string {
-	if conn == nil || conn.RemoteAddr() == nil {
-		return ""
-	}
-	addr := strings.TrimSpace(conn.RemoteAddr().String())
-	host, _, err := net.SplitHostPort(addr)
-	if err == nil {
-		return host
-	}
-	return addr
 }
 
 func (s *Session) onRegister(msg *pb.RegisterReq) proto.Message {

@@ -50,9 +50,7 @@ func TestMigrateAddsPlayerLoginInfoColumnsToExistingUserTable(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("rows error: %v", err)
 	}
-	for _, column := range []string{"last_online_time", "last_ip"} {
-		if !columns[column] {
-			t.Fatalf("expected column %q to be added", column)
-		}
+	if !columns["last_online_time"] {
+		t.Fatalf("expected column %q to be added", "last_online_time")
 	}
 }

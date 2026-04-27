@@ -221,7 +221,6 @@ func (m *TunnelManager) validateStatic(tunnel model.Tunnel) error {
 func (m *TunnelManager) validatePortConflictLocked(tunnel model.Tunnel, selfID uint32) error {
 	port, ok := util.GetTunnelPort(tunnel.Source)
 	if ok {
-		isUDP2 := model.NormalizeTunnelType(tunnel.TunnelType) == model.TunnelTypeUDP
 		for _, existing := range m.tunnels {
 			if existing.ID == selfID || existing.Receiver != tunnel.Receiver {
 				continue
@@ -231,14 +230,35 @@ func (m *TunnelManager) validatePortConflictLocked(tunnel model.Tunnel, selfID u
 				continue
 			}
 			if existingPort == port {
-				isUDP1 := model.NormalizeTunnelType(existing.TunnelType) == model.TunnelTypeUDP
-				if isUDP1 == isUDP2 {
+				if tunnelsShareListenerProtocol(existing, tunnel) {
 					return errors.New("port already in use")
 				}
 			}
 		}
 	}
 	return nil
+}
+
+func tunnelsShareListenerProtocol(a, b model.Tunnel) bool {
+	return tunnelListensTCP(a) && tunnelListensTCP(b) || tunnelListensUDP(a) && tunnelListensUDP(b)
+}
+
+func tunnelListensTCP(tunnel model.Tunnel) bool {
+	switch model.NormalizeTunnelType(tunnel.TunnelType) {
+	case model.TunnelTypeTCP, model.TunnelTypeSOCKS5, model.TunnelTypeHTTP, model.TunnelTypeShadowsocks:
+		return true
+	default:
+		return false
+	}
+}
+
+func tunnelListensUDP(tunnel model.Tunnel) bool {
+	switch model.NormalizeTunnelType(tunnel.TunnelType) {
+	case model.TunnelTypeUDP, model.TunnelTypeShadowsocks:
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *TunnelManager) notify(tunnel model.Tunnel, isDelete bool) {

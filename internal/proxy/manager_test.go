@@ -91,6 +91,66 @@ func TestUpdateTunnelTogglesInletRuntimeState(t *testing.T) {
 	waitForTCPState(t, addr, false)
 }
 
+func TestUpdateTunnelStartsAndStopsInletByProtocol(t *testing.T) {
+	cases := []struct {
+		name     string
+		mode     int32
+		tcp      bool
+		udp      bool
+		password string
+		method   string
+	}{
+		{name: "tcp", mode: int32(pb.TunnelTypeTCP), tcp: true, method: "None"},
+		{name: "udp", mode: int32(pb.TunnelTypeUDP), udp: true, method: "None"},
+		{name: "socks5", mode: int32(pb.TunnelTypeSOCKS5), tcp: true, method: "None"},
+		{name: "http", mode: int32(pb.TunnelTypeHTTP), tcp: true, method: "None"},
+		{name: "shadowsocks", mode: int32(pb.TunnelTypeShadowsocks), tcp: true, udp: true, password: "secret", method: DefaultShadowsocksMethod},
+	}
+
+	for idx, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := log.New(io.Discard, "", 0)
+			manager := NewManager(logger, 0, func(playerID uint32, message any) error {
+				_ = playerID
+				_ = message
+				return nil
+			})
+			t.Cleanup(func() { manager.SyncTunnels(nil) })
+
+			addr := "127.0.0.1:" + freeTCPUDPPort(t)
+			tunnel := &pb.Tunnel{
+				ID:               uint32(100 + idx),
+				Enabled:          true,
+				Sender:           123,
+				Receiver:         0,
+				TunnelType:       tc.mode,
+				Source:           &pb.TunnelPoint{Addr: addr},
+				Endpoint:         &pb.TunnelPoint{Addr: "127.0.0.1:9"},
+				Password:         tc.password,
+				EncryptionMethod: tc.method,
+			}
+
+			manager.SyncTunnels([]*pb.Tunnel{tunnel})
+			if tc.tcp {
+				waitForTCPState(t, addr, true)
+			}
+			if tc.udp {
+				waitForUDPState(t, addr, true)
+			}
+
+			disabled := *tunnel
+			disabled.Enabled = false
+			manager.UpdateTunnel(&pb.ModifyTunnelNtf{Tunnel: &disabled})
+			if tc.tcp {
+				waitForTCPState(t, addr, false)
+			}
+			if tc.udp {
+				waitForUDPState(t, addr, false)
+			}
+		})
+	}
+}
+
 func TestManagerReportsServerInletStartFailure(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 	manager := NewManager(logger, 0, func(playerID uint32, message any) error {
@@ -403,6 +463,31 @@ func freeTCPPort(t *testing.T) string {
 	return strconv.Itoa(int(ln.Addr().(*net.TCPAddr).AddrPort().Port()))
 }
 
+func freeTCPUDPPort(t *testing.T) string {
+	t.Helper()
+	for range 100 {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("allocate tcp port: %v", err)
+		}
+		port := strconv.Itoa(int(ln.Addr().(*net.TCPAddr).AddrPort().Port()))
+		udpAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:"+port)
+		if err != nil {
+			_ = ln.Close()
+			t.Fatalf("resolve udp addr: %v", err)
+		}
+		udpConn, err := net.ListenUDP("udp", udpAddr)
+		_ = ln.Close()
+		if err != nil {
+			continue
+		}
+		_ = udpConn.Close()
+		return port
+	}
+	t.Fatalf("allocate shared tcp/udp port")
+	return ""
+}
+
 func waitForTCPState(t *testing.T, addr string, wantListening bool) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -418,6 +503,27 @@ func waitForTCPState(t *testing.T, addr string, wantListening bool) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("tcp state mismatch for %s, want listening=%v", addr, wantListening)
+}
+
+func waitForUDPState(t *testing.T, addr string, wantListening bool) {
+	t.Helper()
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		t.Fatalf("resolve udp addr: %v", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := net.ListenUDP("udp", udpAddr)
+		listening := err != nil
+		if conn != nil {
+			_ = conn.Close()
+		}
+		if listening == wantListening {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("udp state mismatch for %s, want listening=%v", addr, wantListening)
 }
 
 func waitForInlet(t *testing.T, manager *Manager, tunnelID uint32) *Inlet {

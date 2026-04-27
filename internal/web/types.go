@@ -23,7 +23,6 @@ type PlayerListItem struct {
 	Key            string     `json:"key"`
 	CreateTime     time.Time  `json:"create_time"`
 	LastOnlineTime *time.Time `json:"last_online_time"`
-	LastIP         string     `json:"last_ip"`
 	Online         bool       `json:"online"`
 }
 
