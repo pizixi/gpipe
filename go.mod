@@ -6,7 +6,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jedisct1/go-aes-siv v1.0.0
 	github.com/kardianos/service v1.2.4
-	github.com/pierrec/lz4/v4 v4.1.2
+	github.com/pierrec/lz4/v4 v4.1.26
 	github.com/quic-go/quic-go v0.54.0
 	github.com/shadowsocks/go-shadowsocks2 v0.1.5
 	github.com/xtaci/kcp-go/v5 v5.6.72

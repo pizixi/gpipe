@@ -85,12 +85,17 @@ type SessionCommonInfo struct {
 	Flow         *FlowController
 }
 
+// proxyFlowWindowBytes 控制单会话未确认的 inflight 字节上限。
+// RDP 文件传输常常以多个 64KB 货帧连续发出，1MB 窗口在高延迟链路上容易拖低吞吐并加剧拥塞，
+// 这里提高到 4MB，以获得更顺畅的传输表现，仍与堆内存压力保持平衡。
+const proxyFlowWindowBytes = 4 * 1024 * 1024
+
 func NewSessionCommonInfo(isCompressed bool, method EncryptionMethod, key []byte) *SessionCommonInfo {
 	return &SessionCommonInfo{
 		IsCompressed: isCompressed,
 		Method:       method,
 		Key:          append([]byte(nil), key...),
-		Flow:         NewFlowController(1024 * 1024),
+		Flow:         NewFlowController(proxyFlowWindowBytes),
 	}
 }
 
@@ -119,13 +124,19 @@ func (c *SessionCommonInfo) Close() {
 
 // EncodeDataAndLimit 的顺序与 Rust 一致：先压缩，再加密，再申请流控。
 func (c *SessionCommonInfo) EncodeDataAndLimit(data []byte) ([]byte, error) {
-	out := append([]byte(nil), data...)
-	var err error
+	var (
+		out []byte
+		err error
+	)
 	if c.IsCompressed {
-		out, err = CompressData(out)
+		// CompressData 内部会产生新的输出缓冲，无需提前拷贝 data。
+		out, err = CompressData(data)
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		// Encrypt 内部会拷贝，这里不需要额外拷贝。
+		out = data
 	}
 	out, err = Encrypt(c.Method, c.Key, out)
 	if err != nil {

@@ -5,10 +5,25 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sync"
 
 	aessiv "github.com/jedisct1/go-aes-siv"
 	"github.com/pierrec/lz4/v4"
 )
+
+// lz4HashTablePool 复用 LZ4 压缩用的 hashtable，避免每次压缩都重新分配，
+// 同时绕开旧版本 pierrec/lz4 在传 nil hashTable 路径上对低可压缩数据的边界 bug。
+var lz4HashTablePool = sync.Pool{
+	New: func() any {
+		// pierrec/lz4 v4 默认 hashtable 大小为 1<<16。
+		table := make([]int, 1<<16)
+		return &table
+	},
+}
+
+// lz4MaxDecompressedSize 是单个块允许的最大解压尺寸（与 LZ4 块格式上限一致）。
+// 在生产中我们的 TCP/UDP 单次读取上限为 64KB，留较大冗余以兜底潜在编码端缺陷。
+const lz4MaxDecompressedSize = 8 * 1024 * 1024
 
 // EncryptionMethod 对齐 Rust 中的加密方法枚举。
 type EncryptionMethod string
@@ -73,17 +88,30 @@ func CompressData(input []byte) ([]byte, error) {
 	maxSize := lz4.CompressBlockBound(len(input))
 	out := make([]byte, 4+maxSize)
 	binary.LittleEndian.PutUint32(out[:4], uint32(len(input)))
-	n, err := lz4.CompressBlock(input, out[4:], nil)
-	if err != nil {
-		return nil, err
+
+	tablePtr := lz4HashTablePool.Get().(*[]int)
+	table := *tablePtr
+	for i := range table {
+		table[i] = 0
 	}
-	if n == 0 {
+	n, err := lz4.CompressBlock(input, out[4:], table)
+	lz4HashTablePool.Put(tablePtr)
+	if err != nil {
+		// 编码失败时退回纯 literal 块，保证整条链路稳定。
+		return appendLZ4LiteralBlock(out[:4], input), nil
+	}
+	// n == 0 表示不可压缩；n >= len(input) 表示压缩没收益且更易触发部分版本的解码越界。
+	// 两种情况都退回 literal 块。
+	if n <= 0 || n >= len(input) {
 		return appendLZ4LiteralBlock(out[:4], input), nil
 	}
 	return out[:4+n], nil
 }
 
 // DecompressData 对齐 Rust 的 decompress_size_prepended。
+// 为兼容历史客户端及防御编码端潜在的越界写入，这里在常规路径之外提供两层兜底：
+//  1. 如果 lz4 返回 ErrInvalidSourceShortBuffer，扩大输出缓冲再试一次；
+//  2. 仍失败则按原始（未压缩）块兼容处理。
 func DecompressData(input []byte) ([]byte, error) {
 	if len(input) < 4 {
 		return nil, fmt.Errorf("压缩数据长度不足")
@@ -92,25 +120,33 @@ func DecompressData(input []byte) ([]byte, error) {
 	if size == 0 {
 		return []byte{}, nil
 	}
-	out := make([]byte, size)
+	if size < 0 || size > lz4MaxDecompressedSize {
+		return nil, fmt.Errorf("LZ4 解压长度异常: size=%d", size)
+	}
 	payload := input[4:]
+
+	out := make([]byte, size)
 	n, err := lz4.UncompressBlock(payload, out)
+	if err == nil && n == size {
+		return out[:n], nil
+	}
+
+	// 兼容历史客户端：不可压缩场景下直接发送原始字节。
+	if len(payload) == size {
+		copy(out, payload)
+		return out, nil
+	}
+
 	if err != nil {
-		// 早期 Go 客户端在 LZ4 不可压缩时会直接发送原始块，这里兼容已部署客户端。
-		if len(payload) == size {
-			copy(out, payload)
-			return out, nil
+		// 防御性兜底：若编码端因历史 bug 产生略大于 size 的输出，
+		// 用更大的缓冲区再尝试一次，并截断至 size。
+		large := make([]byte, lz4MaxDecompressedSize)
+		if n2, err2 := lz4.UncompressBlock(payload, large); err2 == nil && n2 >= size {
+			return append([]byte(nil), large[:size]...), nil
 		}
 		return nil, err
 	}
-	if n != size {
-		if len(payload) == size {
-			copy(out, payload)
-			return out, nil
-		}
-		return nil, fmt.Errorf("LZ4 解压长度不匹配: got=%d want=%d", n, size)
-	}
-	return out[:n], nil
+	return nil, fmt.Errorf("LZ4 解压长度不匹配: got=%d want=%d", n, size)
 }
 
 func appendLZ4LiteralBlock(out []byte, input []byte) []byte {
