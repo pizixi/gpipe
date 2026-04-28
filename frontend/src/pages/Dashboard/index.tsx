@@ -112,14 +112,11 @@ const DashboardPage: React.FC = () => {
     <Layout className="dashboard-shell">
       <Header className="dashboard-header">
         <Space className="dashboard-header-main" align="center" size={10}>
-          <ApiOutlined style={{ fontSize: 20, color: '#fff' }} />
+          <ApiOutlined className="dashboard-header-logo" />
           <div className="dashboard-header-copy">
             <Title className="dashboard-header-title" level={4}>
               {t('console_title')}
             </Title>
-            <Text className="dashboard-header-subtitle">
-              {t('console_subtitle')}
-            </Text>
           </div>
         </Space>
         <Space className="dashboard-header-actions" size={8} align="center">
@@ -133,6 +130,7 @@ const DashboardPage: React.FC = () => {
           />
           <LanguageSwitcher />
           <Button
+            className="dashboard-header-logout"
             type="text"
             icon={<LogoutOutlined />}
             onClick={logout}

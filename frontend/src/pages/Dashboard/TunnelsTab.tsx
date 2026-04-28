@@ -429,14 +429,12 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
             onConfirm={() => handleToggle(record, nextEnabled)}
             disabled={isLoading}
           >
-            <Tooltip title={t(value ? 'enabled' : 'disabled')}>
-              <Switch
-                className="tunnel-enable-switch"
-                checked={value}
-                loading={isLoading}
-                aria-label={t('status')}
-              />
-            </Tooltip>
+            <Switch
+              className="tunnel-enable-switch"
+              checked={value}
+              loading={isLoading}
+              aria-label={t('status')}
+            />
           </Popconfirm>
         );
       },

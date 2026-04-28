@@ -20,20 +20,31 @@
   padding: 0 18px;
   min-height: 60px;
   height: auto;
+  line-height: normal;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .dashboard-header-main {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
 .dashboard-header-actions {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   margin-left: auto;
   gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.dashboard-header-logo {
+  flex: 0 0 auto;
+  color: #fff;
+  font-size: 20px;
 }
 
 .dashboard-tabs {
@@ -64,8 +75,7 @@
 
 .dashboard-header-copy {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
   min-width: 0;
 }
 
@@ -73,19 +83,22 @@
   margin: 0 !important;
   color: #fff !important;
   font-weight: 700 !important;
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
   line-height: 1.15 !important;
-}
-
-.dashboard-header-subtitle {
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 12px;
-  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dashboard-header-status {
   color: rgba(255, 255, 255, 0.85) !important;
   font-size: 13px;
+  white-space: nowrap;
+}
+
+.dashboard-header-logout {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .dashboard-tab-loading {
@@ -537,21 +550,23 @@
 
 @media (max-width: 768px) {
   .dashboard-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    align-items: center;
+    flex-wrap: nowrap;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 0 10px;
     min-height: 52px;
   }
 
   .dashboard-header-main {
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
     gap: 8px !important;
   }
 
   .dashboard-header-actions {
-    width: 100%;
-    justify-content: space-between;
+    flex: 0 0 auto;
+    width: auto;
+    justify-content: flex-end;
     gap: 6px !important;
     margin-left: 0;
   }
@@ -559,10 +574,6 @@
   .dashboard-header-title {
     font-size: 18px !important;
     line-height: 1.2 !important;
-  }
-
-  .dashboard-header-subtitle {
-    display: none;
   }
 
   .dashboard-content {
@@ -603,7 +614,7 @@
 @media (max-width: 480px) {
   .dashboard-header {
     gap: 4px;
-    padding: 5px 8px;
+    padding: 0 8px;
     min-height: 48px;
   }
 
@@ -617,5 +628,21 @@
 
   .dashboard-header-title {
     font-size: 17px !important;
+  }
+
+  .dashboard-header-logo {
+    display: none;
+  }
+
+  .dashboard-header-status {
+    font-size: 12px;
+  }
+
+  .dashboard-header-actions .ant-btn-sm {
+    padding-inline: 6px;
+  }
+
+  .dashboard-header-logout {
+    padding-inline: 6px;
   }
 }

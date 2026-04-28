@@ -147,7 +147,12 @@ func (m *TunnelManager) Update(tunnel model.Tunnel) error {
 		m.mu.Unlock()
 		return err
 	}
-	m.clearRuntime(tunnel.ID)
+	// 仅当更新会真正影响 inlet/outlet 是否运行（或归属玩家变更）时才清空 runtime，
+	// 避免无谓的"客户端未确认"中间态。客户端在收到 ModifyTunnelNtf 后也会重新上报，
+	// 这里的判断只是为了减少 UI 抖动。
+	if shouldClearRuntimeOnUpdate(old, tunnel) {
+		m.clearRuntime(tunnel.ID)
+	}
 	for i := range m.tunnels {
 		if m.tunnels[i].ID == tunnel.ID {
 			m.tunnels[i] = tunnel
@@ -184,6 +189,25 @@ func (m *TunnelManager) Delete(id uint32) error {
 	}
 	m.mu.Unlock()
 	return nil
+}
+
+// shouldClearRuntimeOnUpdate 判断隧道更新是否会让现有的 inlet/outlet 失效。
+// 如果只是改改备注、密码这类不会触发 inlet/outlet 重建的字段，就不必清空 runtime，
+// 避免清空后客户端不重启不上报，导致 Web 端长期显示"客户端未确认"。
+func shouldClearRuntimeOnUpdate(oldT, newT model.Tunnel) bool {
+	if oldT.Enabled != newT.Enabled {
+		return true
+	}
+	if oldT.Sender != newT.Sender || oldT.Receiver != newT.Receiver {
+		return true
+	}
+	if oldT.InletDescription() != newT.InletDescription() {
+		return true
+	}
+	if oldT.OutletDescription() != newT.OutletDescription() {
+		return true
+	}
+	return false
 }
 
 func (m *TunnelManager) clearRuntime(tunnelID uint32) {

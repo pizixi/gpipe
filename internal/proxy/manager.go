@@ -179,6 +179,26 @@ func (m *Manager) UpdateTunnel(msg *pb.ModifyTunnelNtf) {
 	}
 	m.startOutletIfNeeded(msg.Tunnel)
 	m.startInletIfNeeded(msg.Tunnel)
+	// 重新声明当前 inlet/outlet 的运行态，覆盖服务端可能在更新时清空的 runtime 记录。
+	// 当本次更新没有改动 inlet/outlet 描述时，上面的 start*IfNeeded 会因为已存在而跳过上报，
+	// 导致服务端 runtime 一直为空，Web 端会停留在"客户端未确认"。这里做一次幂等再确认。
+	m.reaffirmRuntime(msg.Tunnel.ID)
+}
+
+func (m *Manager) reaffirmRuntime(tunnelID uint32) {
+	if tunnelID == 0 {
+		return
+	}
+	m.mu.RLock()
+	_, hasOutlet := m.outlets[tunnelID]
+	_, hasInlet := m.inlets[tunnelID]
+	m.mu.RUnlock()
+	if hasOutlet {
+		m.reportRuntime(tunnelID, RuntimeComponentOutlet, true, "")
+	}
+	if hasInlet {
+		m.reportRuntime(tunnelID, RuntimeComponentInlet, true, "")
+	}
 }
 
 func (m *Manager) shouldRunOutlet(tunnel *pb.Tunnel) bool {

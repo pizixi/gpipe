@@ -154,6 +154,56 @@ func TestUpdateAndDeleteClearTunnelRuntime(t *testing.T) {
 	}
 }
 
+func TestUpdatePreservesRuntimeWhenInletOutletUnchanged(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_tunnel_manager_preserve_runtime?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := NewRuntime(database, tunnelNotifierStub{})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+
+	tunnel, err := rt.Tunnel.Add(model.Tunnel{
+		Source:           "127.0.0.1:1085",
+		Endpoint:         "127.0.0.1:9005",
+		Enabled:          true,
+		TunnelType:       uint32(model.TunnelTypeTCP),
+		IsCompressed:     true,
+		EncryptionMethod: "None",
+		Description:      "before",
+	})
+	if err != nil {
+		t.Fatalf("add tunnel: %v", err)
+	}
+
+	rt.TunnelRuntime.SetInlet(tunnel.ID, true, "")
+
+	// 仅更新不会影响 inlet/outlet 描述的字段（Description）。
+	cosmetic := tunnel
+	cosmetic.Description = "after"
+	if err := rt.Tunnel.Update(cosmetic); err != nil {
+		t.Fatalf("update tunnel: %v", err)
+	}
+	record, ok := rt.TunnelRuntime.Get(tunnel.ID)
+	if !ok || !record.InletRunning {
+		t.Fatalf("expected runtime to be preserved on cosmetic update, got ok=%v record=%+v", ok, record)
+	}
+
+	// 更新影响 inlet 描述的字段时仍然要清空，等待客户端重新上报。
+	rt.TunnelRuntime.SetInlet(tunnel.ID, true, "")
+	material := cosmetic
+	material.Source = "127.0.0.1:1086"
+	if err := rt.Tunnel.Update(material); err != nil {
+		t.Fatalf("update tunnel: %v", err)
+	}
+	if _, ok := rt.TunnelRuntime.Get(tunnel.ID); ok {
+		t.Fatalf("expected runtime to be cleared on material update")
+	}
+}
+
 func TestAddShadowsocksDefaultsMethodAndClearsUsername(t *testing.T) {
 	database, err := db.Open("sqlite://file:test_tunnel_manager_shadowsocks?mode=memory&cache=shared")
 	if err != nil {

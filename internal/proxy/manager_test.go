@@ -229,6 +229,45 @@ func TestUpdateTunnelRestartsInletWhenDescriptionChanges(t *testing.T) {
 	waitForTCPState(t, "127.0.0.1:"+port2, true)
 }
 
+func TestUpdateTunnelReaffirmsRuntimeWhenDescriptionUnchanged(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	manager := NewManager(logger, 0, func(playerID uint32, message any) error {
+		_ = playerID
+		_ = message
+		return nil
+	})
+
+	port := freeTCPPort(t)
+	tunnel := &pb.Tunnel{
+		ID:               31,
+		Enabled:          true,
+		Sender:           123,
+		Receiver:         0,
+		TunnelType:       int32(pb.TunnelTypeTCP),
+		Source:           &pb.TunnelPoint{Addr: "127.0.0.1:" + port},
+		Endpoint:         &pb.TunnelPoint{Addr: "127.0.0.1:9"},
+		EncryptionMethod: "None",
+	}
+	manager.SyncTunnels([]*pb.Tunnel{tunnel})
+	t.Cleanup(func() { manager.SyncTunnels(nil) })
+	waitForTCPState(t, "127.0.0.1:"+port, true)
+
+	// 仅在 SyncTunnels 完成后挂上 reporter，避免初始事件干扰断言。
+	events := make(chan TunnelRuntimeEvent, 4)
+	manager.SetRuntimeReporter(func(event TunnelRuntimeEvent) {
+		events <- event
+	})
+
+	// 等同于服务端只更新了 Description 这类不影响 inlet 描述的字段。
+	updated := *tunnel
+	manager.UpdateTunnel(&pb.ModifyTunnelNtf{Tunnel: &updated})
+
+	event := waitForRuntimeEvent(t, events, RuntimeComponentInlet)
+	if event.TunnelID != tunnel.ID || !event.Running || event.Error != "" {
+		t.Fatalf("expected inlet running re-affirm event, got %+v", event)
+	}
+}
+
 func TestHandlePBRoutesByMessageDirection(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 
