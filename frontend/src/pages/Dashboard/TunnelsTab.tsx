@@ -322,15 +322,12 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('receiver_id'),
       dataIndex: 'receiver',
       sorter: (a, b) => a.receiver - b.receiver,
-      width: 280,
       render: renderPlayerChip,
     },
     {
       title: t('source'),
       dataIndex: 'source',
       sorter: (a, b) => (a.source ?? '').localeCompare(b.source ?? ''),
-      ellipsis: true,
-      width: 178,
       render: (value: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14, whiteSpace: 'nowrap' }}>
           {value || <span style={{ color: '#bfbfbf' }}>-</span>}
@@ -339,7 +336,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     },
     {
       title: '',
-      width: 44,
       align: 'center' as const,
       render: () => <SwapRightOutlined style={{ color: '#94a3b8', fontSize: 18 }} />,
     },
@@ -347,14 +343,11 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('sender_id'),
       dataIndex: 'sender',
       sorter: (a, b) => a.sender - b.sender,
-      width: 280,
       render: renderPlayerChip,
     },
     {
       title: t('target_tab_title'),
       dataIndex: 'endpoint',
-      ellipsis: true,
-      width: 178,
       render: (value: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14, whiteSpace: 'nowrap' }}>
           {value || <span style={{ color: '#bfbfbf' }}>-</span>}
@@ -365,7 +358,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('protocol_type'),
       dataIndex: 'tunnel_type',
       sorter: (a, b) => a.tunnel_type - b.tunnel_type,
-      width: 138,
       render: (value: number) => {
         const label = t(TunnelTypeLabels[value] || 'not_set');
         const style = protocolStyles[value] || { color: '#475569', background: '#f8fafc' };
@@ -382,8 +374,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     {
       title: t('description'),
       dataIndex: 'description',
-      ellipsis: true,
-      width: 240,
       render: (value: string) => {
         if (!value) {
           return <span style={{ color: '#bfbfbf' }}>-</span>;
@@ -399,7 +389,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('runtime_status'),
       dataIndex: 'runtime_status',
       sorter: (a, b) => (a.runtime_status ?? '').localeCompare(b.runtime_status ?? ''),
-      width: 126,
       align: 'center' as const,
       render: (_, record) => renderRuntimeStatus(record),
     },
@@ -407,7 +396,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       title: t('status'),
       dataIndex: 'enabled',
       sorter: (a, b) => Number(a.enabled) - Number(b.enabled),
-      width: 110,
       align: 'center' as const,
       render: (value: boolean, record) => {
         const nextEnabled = !value;
@@ -441,7 +429,6 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
     },
     {
       title: t('actions'),
-      width: 104,
       fixed: fixActionColumn ? ('right' as const) : undefined,
       render: (_, record) => (
         <div className="table-action-group">
@@ -520,16 +507,16 @@ const TunnelsTab: React.FC<Props> = ({ selectedPlayerId, onSelectedPlayerIdChang
       </div>
       <div ref={tableRegionRef} className="dashboard-table-region">
         <Table<TunnelListItem>
-          className="dashboard-data-table"
+          className="dashboard-data-table tunnel-data-table--auto-width"
           columns={columns}
           dataSource={filtered}
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1720, y: tableScrollY }}
+          scroll={{ x: 'max-content', y: tableScrollY }}
           locale={{ emptyText: t('empty_tunnels') }}
           bordered
-          tableLayout="fixed"
+          tableLayout="auto"
           style={{ borderRadius: 8, overflow: 'hidden' }}
         />
       </div>
