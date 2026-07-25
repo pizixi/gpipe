@@ -7,8 +7,14 @@ import {
   DownloadOutlined,
   NodeIndexOutlined,
   SearchOutlined,
+  CloudUploadOutlined,
+  ArrowRightOutlined,
+  CheckCircleFilled,
+  ExclamationCircleFilled,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import { usePlayerStore } from '../../stores/playerStore';
 import type { PlayerListItem } from '../../types';
@@ -21,6 +27,7 @@ import GenerateClientModal from '../../modals/GenerateClientModal';
 import StatusPill from '../../components/StatusPill';
 
 const tableBodyOffset = 56;
+const activeUpgradeStates = new Set(['offered', 'accepted', 'downloading', 'verifying', 'applying']);
 
 const getCreateTimeMs = (value: string) => {
   const time = new Date(value).getTime();
@@ -38,6 +45,14 @@ const comparePlayersByDefault = (a: PlayerListItem, b: PlayerListItem) => (
   || getCreateTimeMs(b.create_time) - getCreateTimeMs(a.create_time)
   || b.id - a.id
 );
+
+const requestErrorMessage = (error: unknown) => {
+  if (axios.isAxiosError(error)) {
+    const responseMessage = (error.response?.data as { msg?: unknown } | undefined)?.msg;
+    return typeof responseMessage === 'string' && responseMessage ? responseMessage : error.message;
+  }
+  return error instanceof Error ? error.message : String(error);
+};
 
 interface Props {
   onOpenPlayerTunnels: (playerId: number) => void;
@@ -108,6 +123,28 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
     setGenOpen(true);
   };
 
+  const handleUpgrade = (player: PlayerListItem) => {
+    Modal.confirm({
+      title: t('confirm_upgrade_client'),
+      content: t('confirm_upgrade_client_desc', { current: player.client_version, latest: player.latest_version }),
+      okText: t('upgrade_client'),
+      cancelText: t('cancel_button'),
+      onOk: async () => {
+        try {
+          const res = await playersApi.upgradeClient({ player_id: player.id });
+          if (res.code === 0) {
+            message.success(t('upgrade_started'));
+            await loadPlayers();
+          } else {
+            message.error(t('upgrade_failed') + res.msg);
+          }
+        } catch (error) {
+          message.error(t('upgrade_failed') + requestErrorMessage(error));
+        }
+      },
+    });
+  };
+
   const tableScrollY = tableRegionHeight > tableBodyOffset ? tableRegionHeight - tableBodyOffset : undefined;
 
   const columns: ColumnsType<PlayerListItem> = [
@@ -127,6 +164,57 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       dataIndex: 'key',
       ellipsis: true,
       render: (value: string) => <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{value}</span>,
+    },
+    {
+      title: t('client_version'),
+      dataIndex: 'client_version',
+      width: 224,
+      sorter: (a, b) => (a.client_version || '').localeCompare(b.client_version || ''),
+      render: (value: string, record) => {
+        if (!value) {
+          return <span className="client-version-badge client-version-badge--unknown">{t('unknown_version')}</span>;
+        }
+        const active = activeUpgradeStates.has(record.upgrade_status);
+        const failed = ['failed', 'rolled_back'].includes(record.upgrade_status);
+        const reasonKey = record.upgrade_unavailable_reason
+          ? `upgrade_reason_${record.upgrade_unavailable_reason}`
+          : 'upgrade_unavailable';
+        const badgeState = active
+          ? 'active'
+          : record.can_upgrade
+            ? 'upgrade'
+            : record.is_latest
+              ? 'latest'
+              : 'unavailable';
+        const tooltip = (
+          <div className="client-version-tooltip">
+            <div><span>{t('current_client_version')}</span><strong>v{value}</strong></div>
+            <div><span>{t('server_target_version')}</span><strong>v{record.latest_version}</strong></div>
+            <div><span>{t('client_platform_detail')}</span><strong>{record.client_platform || t('unknown_platform')}</strong></div>
+            {record.can_upgrade && !active && <div className="client-version-tooltip-highlight">{t('upgrade_safe_available')}</div>}
+            {!record.can_upgrade && !record.is_latest && !active && <div className="client-version-tooltip-warning">{t(reasonKey)}</div>}
+            {active && <div className="client-version-tooltip-highlight">{t(`upgrade_status_${record.upgrade_status}`)} · {record.upgrade_progress}%</div>}
+            {failed && record.upgrade_error && <div className="client-version-tooltip-error">{record.upgrade_error}</div>}
+          </div>
+        );
+        return (
+          <Tooltip title={tooltip} placement="topLeft" mouseEnterDelay={0.15}>
+            <span className={`client-version-badge client-version-badge--${badgeState}`}>
+              {active && <LoadingOutlined spin />}
+              {record.is_latest && !active && <CheckCircleFilled />}
+              <span className="client-version-current">v{value}</span>
+              {record.can_upgrade && !active && (
+                <>
+                  <ArrowRightOutlined className="client-version-arrow" />
+                  <span className="client-version-target">v{record.latest_version}</span>
+                </>
+              )}
+              {active && <span className="client-version-progress">{record.upgrade_progress}%</span>}
+              {failed && !active && <ExclamationCircleFilled className="client-version-error-icon" />}
+            </span>
+          </Tooltip>
+        );
+      },
     },
     {
       title: t('create_time'),
@@ -173,7 +261,7 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
     },
     {
       title: t('actions'),
-      width: 202,
+      width: 246,
       render: (_, record) => (
         <div className="table-action-group">
           <Tooltip title={t('view_player_tunnels')}>
@@ -189,6 +277,21 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
           </Tooltip>
           <Tooltip title={t('generate_client')}>
             <Button className="table-action-button" type="text" icon={<DownloadOutlined style={{ color: '#0d9488' }} />} onClick={() => handleGenerate(record)} />
+          </Tooltip>
+          <Tooltip title={record.can_upgrade
+            ? t('upgrade_client')
+            : t(record.is_latest
+              ? 'already_latest'
+              : record.upgrade_unavailable_reason
+                ? `upgrade_reason_${record.upgrade_unavailable_reason}`
+                : 'upgrade_unavailable')}>
+            <Button
+              className="table-action-button"
+              type="text"
+              icon={<CloudUploadOutlined style={{ color: record.can_upgrade ? '#7c3aed' : undefined }} />}
+              disabled={!record.can_upgrade || activeUpgradeStates.has(record.upgrade_status)}
+              onClick={() => handleUpgrade(record)}
+            />
           </Tooltip>
           <Tooltip title={record.online ? t('online_player_delete_forbidden') : t('delete_button')}>
             <Button
@@ -228,7 +331,7 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1200, y: tableScrollY }}
+          scroll={{ x: 1450, y: tableScrollY }}
           locale={{ emptyText: t('empty_players') }}
           bordered
           tableLayout="fixed"

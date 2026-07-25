@@ -12,6 +12,7 @@ type Runtime struct {
 	// ClientBuildSettings 为 Web 后台生成玩家客户端下载提供统一配置入口。
 	ClientBuildSettings *store.ClientBuildSettingsStore
 	TunnelRuntime       *TunnelRuntimeStore
+	Upgrades            *UpgradeManager
 	Players             *PlayerManager
 	Tunnel              *TunnelManager
 }
@@ -34,6 +35,7 @@ func NewRuntime(db *sql.DB, notifier TunnelNotifier) (*Runtime, error) {
 		Tunnels:             tunnelStore,
 		ClientBuildSettings: clientBuildSettingsStore,
 		TunnelRuntime:       tunnelRuntimeStore,
+		Upgrades:            NewUpgradeManager(),
 		Players:             players,
 		Tunnel:              tunnelManager,
 	}, nil

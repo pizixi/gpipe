@@ -1,125 +1,142 @@
 # gpipe
 
-`gpipe` 是对 Rust `npipe` 项目的 Go 重构版本，目标是在业务逻辑上尽量与原项目保持一致，并提供可独立构建、运行和部署的 Go 实现。
+`gpipe` 是 Rust `npipe` 的 Go 重构版本，尽量保持原有业务与协议兼容，并提供可独立构建、部署的服务端、客户端和 Web 管理端。
 
-当前版本已经包含控制面、Web 管理端、隧道同步、代理转发、`TCP / WS / QUIC / KCP` 传输、`TCP / UDP / SOCKS5 / HTTP` 代理类型，以及基于纯 Go SQLite 驱动的服务端存储实现。
+## 功能
 
-## 项目结构
+- 客户端登录、自动重连、心跳保活和隧道动态同步
+- 用户、玩家和隧道的 Web 管理
+- 本地/远端 `TCP`、`UDP`、`SOCKS5`、`HTTP` 代理
+- `tcp://`、`ws://`、`quic://`、`kcp://` 传输
+- 可选 TLS、Shadowsocks 出站和 `illegal_traffic_forward` 非协议流量转发
+- 纯 Go SQLite 存储，无 CGO 依赖
+- Web 前端内置于服务端二进制，也可通过 `web_base_dir` 覆盖
+- Windows / Linux 系统服务安装与卸载
+- 玩家客户端生成、版本上报和跨平台远程升级
+- 升级包断点续传、SHA-256/HMAC 校验、健康检查和失败自动回滚
 
-- `cmd/server`：服务端入口
-- `cmd/client`：客户端入口
-- `client`：对第三方 Go 程序公开的客户端调用包
-- `examples/third_party_go_client`：独立第三方 Go 模块调用客户端的示例，支持源码变量形式的可选 Shadowsocks 出站
-- `internal/client`：客户端主循环、登录、心跳、隧道同步
-- `internal/server`：服务端主逻辑、连接管理、协议处理
-- `internal/proxy`：代理入口、出口、数据转发、加密与压缩
-- `internal/codec`：外层帧编解码
-- `internal/proto`：与 Rust 版本兼容的消息编解码
-- `internal/db`：SQLite 初始化与迁移
-- `internal/web`：管理后台 HTTP API
-- `scripts/build-release.ps1`：一键生成发布目录
-- `frontend/`：React 管理端源码，构建产物输出到 `frontend/dist` 并打进服务端二进制
-- `scripts/build-client-templates.ps1`：预构建客户端下载模板
-- `scripts/smoke.ps1`：本地最小链路验证脚本
+## 快速开始
 
-## 已实现特性
+从源码构建需要 Go、Node.js/npm 和 PowerShell；运行已经打包好的发布目录不需要 Go 或 Node.js。
 
-- 纯 Go SQLite 驱动，使用 `modernc.org/sqlite`
-- 服务端 Web 管理接口
-- 用户与隧道的增删改查
-- 客户端登录、重连、心跳保活
-- 隧道变更通知与动态同步
-- 本地和远端的 `TCP / UDP / SOCKS5 / HTTP` 代理
-- 传输协议支持：
-  - `tcp://`
-  - `ws://`
-  - `quic://`
-  - `kcp://`
-- `illegal_traffic_forward` 非协议流量转发
-- 默认管理端页面已内置到服务端二进制中
-- `web_base_dir` 可选磁盘目录覆盖，便于前端联调
-- Windows / Linux 服务安装与卸载
-
-## 构建
-
-建议在项目目录内使用独立缓存目录，避免污染全局 Go 缓存。
+### 1. 构建发布包
 
 ```powershell
+.\scripts\build-release.ps1 -OutputDir .\release -Version 1.1.0 -Clean
+```
+
+`1.1.0` 是示例版本。正式发布时必须显式填写并递增语义版本（SemVer）。脚本会将同一个版本写入客户端二进制、`release/gpipe.json` 和 `release/client-templates/manifest.json`。
+
+### 2. 检查配置并启动服务端
+
+至少应修改 `release/gpipe.json` 中的 Web 管理密码，并按部署环境检查监听地址、TLS 和客户端版本配置。
+
+```powershell
+Set-Location .\release
+.\gpipe-server.exe -config-file .\gpipe.json
+```
+
+默认 Web 管理地址为 `http://127.0.0.1:8120`。Linux amd64 可运行发布目录中的 `gpipe-server-linux-amd64`。
+
+### 3. 创建玩家并运行客户端
+
+在 Web 管理端创建玩家后，可直接生成对应平台的客户端。源码开发时也可以手工启动通用客户端：
+
+```powershell
+.\bin\gpipe-client.exe run --server tcp://127.0.0.1:8118 --key demo
+```
+
+## 构建与发布
+
+### 一键发布脚本
+
+```powershell
+.\scripts\build-release.ps1 -OutputDir .\release -Version 1.1.0 -Clean
+```
+
+脚本依次完成：
+
+1. 安装缺失的前端依赖并构建 `frontend/dist/`。
+2. 将前端静态资源（包括 `favicon.ico`）嵌入服务端。
+3. 构建当前宿主平台服务端和 Linux amd64 服务端。
+4. 构建 Windows/Linux 多架构客户端模板及 `manifest.json`。
+5. 复制并规范化 `gpipe.json`，同步 `client_latest_version`。
+6. 创建数据库、缓存和日志目录；仓库存在 `certs/` 时一并复制。
+
+常用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `-OutputDir` | 发布目录，默认 `./release` |
+| `-ConfigPath` | 源配置文件，默认 `./gpipe.json` |
+| `-Version` | 客户端语义版本，正式发布时应显式指定 |
+| `-ServerGOOS` / `-ServerGOARCH` | 指定主服务端产物的平台和架构 |
+| `-SkipFrontend` | 跳过前端构建，沿用现有 `frontend/dist` |
+| `-SkipTemplates` | 跳过客户端模板构建 |
+| `-SkipCerts` | 不复制证书目录 |
+| `-Clean` | 构建前清理指定发布目录 |
+
+修改过页面、图标、CSS 或 JavaScript 时不要使用 `-SkipFrontend`，否则这些改动不会进入新服务端。
+
+典型发布目录：
+
+```text
+release/
+  gpipe-server.exe
+  gpipe-server-linux-amd64
+  gpipe.json
+  gpipe.db
+  logs/
+  client-cache/
+  client-templates/
+    manifest.json
+    gpipe-client-template-windows-amd64.exe
+    gpipe-client-template-windows-arm64.exe
+    gpipe-client-template-linux-amd64
+    gpipe-client-template-linux-arm64
+    gpipe-client-template-linux-armv7
+  certs/                         # 仅启用 TLS 时需要
+```
+
+### 手工构建
+
+前端有改动时先构建前端，再构建服务端：
+
+```powershell
+Set-Location .\frontend
+npm ci
+npm run build
+Set-Location ..
+
 go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-server.exe .\cmd\server
 go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client.exe .\cmd\client
 ```
 
-如果要启用传输层 TLS，请在 `gpipe` 目录生成证书：
+单独构建纯发布版客户端模板：
 
 ```powershell
-.\generate-certificate.ps1 -Force
+.\scripts\build-client-templates.ps1 -OutputDir .\client-templates -Version 1.1.0
 ```
 
-生成结果默认输出到 `.\certs\`：
-
-- `.\certs\cert.pem`
-- `.\certs\server.key.pem`
-- `.\certs\root-ca.pem`
-- `.\certs\root-ca.key.pem`
-
-发布包最小建议内容：
-
-- `bin/gpipe-server(.exe)`
-- `bin/gpipe-client(.exe)`
-- `gpipe.json`
-- `certs/` 目录（仅在 `enable_tls=true` 时需要）
-
-如果你希望 Web 后台在“纯发布版环境”里直接为玩家生成客户端下载，而不依赖本机 Go 工具链和源码目录，额外建议携带：
-
-- `client-templates/` 目录
-
-说明：
-
-- `frontend/dist` 已内置进服务端二进制，发布时不需要再额外携带这个目录
-- 如果设置了 `web_base_dir` 且目录存在，服务端会优先使用磁盘目录中的静态文件；目录里既可以放完整 `index.html`，也可以放 `templates/` 目录让首页走模板渲染
-- `client-templates/` 可通过 `.\scripts\build-client-templates.ps1` 预先构建；服务端下载玩家客户端时会优先使用这些模板，并把玩家密钥和连接参数直接补丁进二进制
-
-纯发布版模板构建示例：
+Linux 客户端交叉构建示例：
 
 ```powershell
-.\scripts\build-client-templates.ps1 -OutputDir .\client-templates
-```
-
-一键生成发布目录：
-
-```powershell
-.\scripts\build-release.ps1 -OutputDir .\release -Clean
-```
-
-这个脚本会：
-
-- 先构建前端到 `frontend/dist/`
-- 把前端静态资源一并嵌入随后生成的服务端二进制；包括 `favicon.ico` 在内的页面资源都会随二进制发布
-- 构建服务端二进制到 `release/gpipe-server.exe`（Linux 下为 `release/gpipe-server`）
-- 构建客户端模板到 `release/client-templates/`
-- 复制并规范化 `release/gpipe.json`
-- 创建 `release/client-cache/`、`release/logs/`、`release/gpipe.db`
-- 如果仓库里存在 `certs/`，自动复制到发布目录
-
-如果你修改过前端页面、图标、CSS、JS 等静态资源，不要加 `-SkipFrontend`；否则会沿用上一次的 `frontend/dist` 构建结果，新的 `favicon.ico` 不会进入本次服务端二进制。
-
-Linux 交叉构建客户端示例：
-
-```powershell
-$env:GOOS="linux"
-$env:GOARCH="amd64"
+$env:GOOS = "linux"
+$env:GOARCH = "amd64"
 go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cmd\client
 ```
 
-## 服务端运行
+## 服务端配置
+
+启动命令：
 
 ```powershell
 .\gpipe-server.exe -config-file .\gpipe.json
 ```
 
-默认配置文件名已经调整为 `gpipe.json`。为了兼容旧部署，如果你没有显式传 `-config-file`，且当前目录只有旧文件名 `config.json`，服务端仍会自动回退读取它。
+默认配置文件是 `gpipe.json`。未传 `-config-file` 且当前目录只有旧版 `config.json` 时，服务端会兼容读取旧文件名。
 
-服务端配置示例：
+完整示例：
 
 ```json
 {
@@ -135,129 +152,150 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
   "web_password": "admin@1234",
   "client_template_dir": "./client-templates",
   "client_artifact_cache_dir": "./client-cache",
+  "client_latest_version": "1.1.0",
   "quiet": false,
   "log_dir": "logs"
 }
 ```
 
-配置项说明：
+| 配置项 | 说明 |
+| --- | --- |
+| `database_url` | SQLite 地址，例如 `sqlite://gpipe.db?mode=rwc` |
+| `listen_addr` | 客户端服务监听地址，多个地址用英文逗号分隔 |
+| `illegal_traffic_forward` | 非 npipe 协议流量转发目标，例如 `127.0.0.1:80` |
+| `enable_tls` | 是否加密客户端与服务端之间的传输链路 |
+| `tls_cert` / `tls_key` | 服务端 TLS 证书和私钥 |
+| `web_base_dir` | 可选的磁盘 Web 资源目录；为空或不存在时使用内置页面 |
+| `web_addr` | Web 管理端监听地址 |
+| `web_username` / `web_password` | Web 管理凭据；任一留空都会关闭 Web 管理端 |
+| `client_template_dir` | 预构建客户端模板目录 |
+| `client_artifact_cache_dir` | 已注入玩家配置的客户端下载缓存目录 |
+| `client_latest_version` | 最新客户端语义版本，应与模板 manifest 一致 |
+| `quiet` | 是否静默运行 |
+| `log_dir` | 日志目录 |
 
-| 配置项                      | 说明                                                               |
-| --------------------------- | ------------------------------------------------------------------ |
-| `database_url`              | 数据库地址，目前只支持 SQLite，示例：`sqlite://gpipe.db?mode=rwc`  |
-| `listen_addr`               | 服务监听地址，多个地址用英文逗号分隔                               |
-| `illegal_traffic_forward`   | 非 `npipe` 协议流量转发目标，例如 `127.0.0.1:80`                   |
-| `enable_tls`                | 是否为客户端 `<->` 服务端传输链路启用 TLS                          |
-| `tls_cert`                  | TLS 证书路径                                                       |
-| `tls_key`                   | TLS 私钥路径                                                       |
-| `web_base_dir`              | 可选磁盘静态资源目录；为空或目录不存在时回退到二进制内置的页面     |
-| `web_addr`                  | Web 管理端监听地址                                                 |
-| `web_username`              | Web 管理账号，留空则关闭 Web 管理                                  |
-| `web_password`              | Web 管理密码，留空则关闭 Web 管理                                  |
-| `client_template_dir`       | 可选的客户端模板目录；存在目标模板时，下载玩家客户端不需要 Go 环境 |
-| `client_artifact_cache_dir` | 可选的客户端下载缓存目录；缓存已补丁好的玩家专属二进制             |
-| `quiet`                     | 是否静默运行                                                       |
-| `log_dir`                   | 日志目录                                                           |
+`web_base_dir` 中既可以放完整 `index.html`，也可以放 `templates/` 目录使用模板渲染，适合前端联调。
 
-## 纯发布版客户端下载
+## 客户端生成与远程升级
 
-Web 后台“生成客户端”现在支持两种工作模式：
+### 玩家客户端下载
 
-1. 优先读取 `client_template_dir` 下的预构建模板，直接把玩家密钥、服务端地址、TLS、Shadowsocks 参数补丁进二进制。
-2. 如果没有找到模板，再回退到源码目录 + `go build` 动态编译。
+Web 管理端按以下顺序生成玩家客户端：
 
-推荐发布方式：
+1. 优先读取 `client_template_dir` 中的预构建模板，将玩家密钥、服务端地址、TLS 和 Shadowsocks 参数注入二进制。
+2. 找不到模板时，回退到源码目录并调用 `go build` 动态编译。
 
-- 先在构建机执行 `.\scripts\build-client-templates.ps1`
-- 把生成的 `client-templates/` 目录和服务端程序一起发布
-- 在 `gpipe.json` 里设置 `client_template_dir`
-- 如需减少重复 I/O，再额外配置 `client_artifact_cache_dir`
+因此，正式部署应携带 `client-templates/`。这样服务端机器无需 Go 工具链，也能生成 Windows/Linux 客户端；`client_artifact_cache_dir` 可减少相同客户端的重复生成开销。
 
-这样发布机即使没有安装 Go，也可以正常在玩家列表里生成 Windows / Linux 客户端下载。
+### 版本规则
 
-如果你希望直接一次命令产出完整发布目录，推荐直接执行：
+- `build-release.ps1 -Version` 会同步发布配置、客户端二进制和模板 manifest 的版本。
+- `client_latest_version` 必须与 `client-templates/manifest.json` 的 `version` 完全一致。
+- 旧配置缺少 `client_latest_version` 时，新服务端会从 manifest 自动读取；正式部署仍建议显式配置。
+- 显式配置与 manifest 不一致时，普通客户端下载仍可使用，但远程升级会被禁用，避免分发错误版本。
+- 不支持远程降级：客户端版本高于服务端目标版本时不会升级。
 
-```powershell
-.\scripts\build-release.ps1 -OutputDir .\release -Clean
-```
+玩家列表使用单行版本徽标：最新版本显示绿色，可升级版本以琥珀色显示“当前版本 → 目标版本”。平台、目标版本、升级进度和失败原因通过鼠标悬浮提示展示。
 
-最小发布目录结构示例：
+升级按钮只有在以下条件全部满足时才启用：
 
-```text
-release/
-  gpipe-server.exe
-  gpipe.json
-  gpipe.db
-  logs/
-  client-cache/
-  client-templates/
-    gpipe-client-template-windows-amd64.exe
-    gpipe-client-template-windows-arm64.exe
-    gpipe-client-template-linux-amd64
-    gpipe-client-template-linux-arm64
-    gpipe-client-template-linux-armv7
-  certs/
-    cert.pem
-    server.key.pem
-```
+- 客户端在线并支持安全升级协议
+- 客户端平台受支持，版本号有效且低于目标版本
+- 没有其他升级任务正在执行
+- 存在版本、平台和校验信息均匹配的客户端模板
 
-说明：
+按钮被禁用时，悬浮提示会区分离线、不支持升级、平台未知、版本无效、已是最新、客户端版本更高、任务执行中和升级产物不可用等原因。
 
-- `client-templates/` 是纯发布版环境里网页“生成客户端”功能的关键目录
-- `client-cache/` 可以预先创建，也可以让服务端首次运行时自动创建
-- `certs/` 只有在 `enable_tls=true` 时才需要
-- 如果是 Linux 发布，把根目录下的 `gpipe-server.exe` 换成对应的 `gpipe-server` 文件名即可
+### 安全与平滑升级
 
-## 客户端运行
+- 升级包通过现有客户端控制连接分块传输，不要求客户端访问 Web 管理端口。
+- 分块支持断线续传；完整包通过 SHA-256 和玩家密钥 HMAC 双重验证后才允许切换。
+- Windows 使用独立升级助手等待旧进程退出后替换文件，避免覆盖运行中的可执行文件。
+- Linux/其他类 Unix 系统使用备份后切换的方式替换文件。
+- 旧二进制保留到新版本重新登录成功；120 秒健康检查失败会恢复备份并重启旧版本。
+- 客户端进程必须对自身目录具有写权限，系统服务安装通常已满足这一条件。
 
-前台运行：
+加入自更新协议之前构建的旧客户端不会声明升级能力，需要先手工替换一次；之后可通过 Web 管理端跨版本升级。
+
+## 客户端使用
+
+### 命令行
+
+普通连接：
 
 ```powershell
 .\bin\gpipe-client.exe run --server tcp://127.0.0.1:8118 --key demo
 ```
 
-启用 TLS 的示例：
+启用 TLS：
 
 ```powershell
 .\bin\gpipe-client.exe run --server quic://127.0.0.1:8119 --key demo --enable-tls
 ```
 
-常用参数：
-
-- `--server`：服务端地址，支持多个地址，使用英文逗号分隔
-- `--key`：玩家密钥
-- `--enable-tls`：为客户端 `<->` 服务端传输链路启用 TLS
-- `--tls-server-name`：TLS SNI
-- `--ss-server`：可选，Shadowsocks 服务端地址
-- `--ss-method`：可选，Shadowsocks 加密方式
-- `--ss-password`：可选，Shadowsocks 密码
-- `--quiet`：静默模式
-- `--log-dir`：日志目录
-- `--backtrace`：启用更完整的运行时回溯
-
-兼容性说明：
-
-- `--ca-cert` 和 `--insecure` 仍保留解析，主要用于兼容旧命令行/旧服务参数
-- 当前客户端在 TLS 模式下默认跳过证书校验，TLS 只用于链路加密，因此通常不需要再传 `--ca-cert`
-- 当同时传入 `--ss-server`、`--ss-method`、`--ss-password` 时，客户端会通过 Shadowsocks 出站连接服务端
-- 目前自定义拨号只支持 `tcp://` 和 `ws://` 服务端地址；`quic://`、`kcp://` 仍然使用原生 UDP 拨号
-
-通过 Shadowsocks 连接服务端示例：
+通过 Shadowsocks 连接：
 
 ```powershell
 .\bin\gpipe-client.exe run --server ws://127.0.0.1:8119 --key demo --ss-server 127.0.0.1:8388 --ss-method chacha20-ietf-poly1305 --ss-password your-password
 ```
 
-## 作为 Go 包直接调用客户端
+常用参数：
 
-如果你要在第三方 Go 程序里直接嵌入客户端，不要导入 `internal/client`，请改用公开包 `github.com/pizixi/gpipe/client`。
+| 参数 | 说明 |
+| --- | --- |
+| `--server` | 服务端地址；多个地址用英文逗号分隔 |
+| `--key` | 玩家密钥 |
+| `--enable-tls` | 启用客户端与服务端之间的 TLS |
+| `--tls-server-name` | TLS SNI |
+| `--ss-server` / `--ss-method` / `--ss-password` | Shadowsocks 出站配置，三项需同时提供 |
+| `--quiet` | 静默模式 |
+| `--log-dir` | 日志目录 |
+| `--backtrace` | 输出更完整的运行时回溯 |
 
-完整示例可参考：
+兼容说明：
 
-- `examples/third_party_go_client`：独立第三方模块示例，包含自己的 `go.mod`，并支持通过源码变量启用 Shadowsocks 出站
-- `examples/client_direct_demo.go`：仓库内直接运行的完整示例，包含可选 Shadowsocks 出站拨号
+- `--ca-cert` 和 `--insecure` 仍可解析，用于兼容旧命令行或旧服务参数。
+- 当前客户端在 TLS 模式下默认跳过证书链和主机名校验，通常无需传 `--ca-cert`。
+- Shadowsocks 自定义拨号目前仅支持 `tcp://` 和 `ws://`；`quic://`、`kcp://` 使用原生 UDP 拨号。
 
-最小示例：
+### 安装系统服务
+
+Windows 和 Linux 均支持：
+
+```powershell
+.\bin\gpipe-client.exe install --server tcp://127.0.0.1:8118 --key demo
+.\bin\gpipe-client.exe uninstall
+```
+
+- Windows 通常需要管理员权限。
+- Linux 通常需要 `systemd` 和足够权限。
+- `run-service` 供服务管理器调用，一般不应手工执行。
+
+## TLS 范围与本地证书
+
+`enable_tls` 只保护 `gpipe client <-> gpipe server` 这一段链路。隧道内承载的 TCP、UDP、SOCKS5 和 HTTP 数据在这一段会被加密，但本地应用到客户端、服务端到最终目标的链路是否加密，取决于业务程序本身。
+
+还需注意：
+
+- Web 管理端 `web_addr` 是独立的 HTTP 接口，不受 `enable_tls` 控制。
+- `quic://` 本身要求 TLS；`tcp://`、`ws://`、`kcp://` 可通过 `enable_tls` 加密。
+- 当前 TLS 默认只提供链路加密，不校验证书链和主机名；`--tls-server-name` 仍可指定 SNI。
+
+生成本地调试证书：
+
+```powershell
+.\generate-certificate.ps1 -Force
+```
+
+证书输出到 `certs/`：
+
+- `cert.pem`、`server.key.pem`：服务端证书和私钥
+- `root-ca.pem`、`root-ca.key.pem`：本地根证书和私钥
+- 默认 SAN：`localhost`、`127.0.0.1`、`::1`
+
+## 作为 Go 包调用
+
+第三方 Go 程序应导入公开包 `github.com/pizixi/gpipe/client`，不要导入 `internal/client`。
 
 ```go
 package main
@@ -275,19 +313,17 @@ func main() {
   ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
   defer stop()
 
-  logger := log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
-
   if err := gclient.RunContext(ctx, gclient.Options{
     Server: "tcp://127.0.0.1:8118",
     Key:    "demo",
-    Logger: logger,
+    Logger: log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile),
   }); err != nil {
     log.Fatal(err)
   }
 }
 ```
 
-如果需要通过 Shadowsocks 连接服务端，可以直接复用公开包里的拨号辅助：
+Shadowsocks 拨号辅助：
 
 ```go
 dial, err := gclient.NewShadowsocksDialFunc(gclient.SSDialConfig{
@@ -300,104 +336,52 @@ if err != nil {
 }
 ```
 
-## TLS 作用范围
+更多示例：
 
-`enable_tls` 只控制客户端和服务端之间的传输连接，不会自动把整条业务链路的每一段都变成 TLS。
+- `examples/third_party_go_client`：独立 Go 模块及可选 Shadowsocks 出站示例
+- `examples/client_direct_demo.go`：仓库内直接运行的完整示例
 
-以一条普通隧道为例，数据通常会经过三段：
+## 验证
 
-1. 本地应用 `<->` 本地 `gpipe`
-2. `gpipe client` `<->` `gpipe server`
-3. 远端 `gpipe` `<->` 最终目标服务 `endpoint`
-
-说明如下：
-
-- 开启服务端配置 `enable_tls=true`，并在客户端使用 `--enable-tls` 后，第 `2` 段会使用 TLS
-- 这包括隧道内承载的 `TCP / UDP / SOCKS5 / HTTP` 业务数据；这些数据在客户端和服务端之间传输时会被 TLS 保护
-- 当前客户端 TLS 默认只做链路加密，不校验证书链和主机名，因此不需要再额外传 `--ca-cert`
-- `--tls-server-name` 仍可用于发送指定的 TLS SNI
-- 第 `1` 段和第 `3` 段不会因为 `enable_tls` 自动加密，它们是否加密取决于业务程序本身
-- Web 管理端 `web_addr` 不受 `enable_tls` 控制，当前仍是独立的 HTTP 管理接口
-- `quic://` 本身要求 TLS；`tcp://`、`ws://`、`kcp://` 在启用 `enable_tls` 后同样会对客户端和服务端之间的链路加密
-
-例如：
-
-- 本地 `iperf3` 连到本地 `gpipe`，这段不是 `enable_tls` 负责的
-- 本地 `gpipe client` 到远端 `gpipe server`，这段会被 TLS 加密
-- 远端 `gpipe` 再去连接 `127.0.0.1:5201`，这段仍然是普通 TCP/UDP，除非目标服务自己就是 TLS 服务
-
-## 本地证书
-
-仓库内置的 PowerShell 脚本会默认生成适合本机调试的证书：
-
-- DNS SAN：`localhost`
-- IP SAN：`127.0.0.1`、`::1`
-
-生成命令：
-
-```powershell
-.\generate-certificate.ps1 -Force
-```
-
-生成后文件位于 `.\certs\` 目录：
-
-- `.\certs\cert.pem`
-- `.\certs\server.key.pem`
-- `.\certs\root-ca.pem`
-- `.\certs\root-ca.key.pem`
-
-生成后：
-
-- 服务端使用 `.\certs\cert.pem` 和 `.\certs\server.key.pem`
-- 客户端启用 TLS 时不需要再传 `--ca-cert`
-- 如果你希望在本地开发时覆盖内置页面，可以把前端文件放在 `web_base_dir` 指向的目录中；既支持传统单文件 `index.html`，也支持当前仓库使用的 `templates/` 拆分结构
-
-本地测试示例：
-
-```powershell
-.\bin\gpipe-server.exe -config-file .\gpipe.json
-.\bin\gpipe-client.exe run --server tcp://127.0.0.1:8118 --key demo --enable-tls
-```
-
-## 安装系统服务
-
-客户端支持安装为系统服务，当前通过 `github.com/kardianos/service` 实现，支持 Windows 和 Linux。
-
-Windows / Linux 安装：
-
-```powershell
-.\bin\gpipe-client.exe install --server tcp://127.0.0.1:8118 --key demo
-```
-
-卸载服务：
-
-```powershell
-.\bin\gpipe-client.exe uninstall
-```
-
-说明：
-
-- `run-service` 子命令保留给服务管理器调用，通常不需要手工执行
-- 新安装的服务不再附带 `--ca-cert` 参数
-- Windows 下安装和启动服务通常需要管理员权限
-- Linux 下通常需要 `systemd` 环境和足够权限
-
-## 本地验证
-
-仓库内置了最小链路验证脚本：
+最小链路验证：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1
 ```
 
-该脚本会完成以下动作：
+该脚本会生成临时配置，启动服务端，验证内置 Web 资源，通过 API 创建测试用户，并启动客户端验证登录。
 
-- 生成临时 `gpipe.json`
-- 启动 Go 服务端
-- 校验在 `web_base_dir=""` 时首页和静态资源会返回内置 `frontend/dist` 内容
-- 通过 Web API 创建测试用户
-- 启动 Go 客户端并验证登录成功
+Windows 真实跨版本升级演练：
 
-## 备注
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\upgrade-smoke.ps1
+```
 
-- 服务端数据库驱动为纯 Go 实现，不依赖 CGO
+该脚本构建 `1.0.0` 客户端并通过管理 API 升级到 `1.1.0`，验证文件替换、重新登录、任务状态和残留文件清理。
+
+常规代码检查：
+
+```powershell
+go test ./...
+go vet ./...
+
+Set-Location .\frontend
+npm run build
+npm audit
+```
+
+## 项目结构
+
+| 路径 | 用途 |
+| --- | --- |
+| `cmd/server` / `cmd/client` | 服务端和客户端入口 |
+| `client` | 对第三方 Go 程序公开的客户端包 |
+| `internal/server` / `internal/client` | 服务端与客户端核心逻辑 |
+| `internal/proxy` | 代理入口、出口、加密、压缩和数据转发 |
+| `internal/codec` / `internal/proto` | 帧与协议消息编解码 |
+| `internal/db` / `internal/web` | SQLite 存储与 Web 管理 API |
+| `frontend` | React 管理端；产物写入 `frontend/dist` |
+| `scripts/build-release.ps1` | 一键发布构建 |
+| `scripts/build-client-templates.ps1` | 多平台客户端模板构建 |
+| `scripts/smoke.ps1` / `scripts/upgrade-smoke.ps1` | 基础链路与升级验证 |
+| `examples` | Go 包调用示例 |

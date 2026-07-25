@@ -5,6 +5,7 @@ import type {
   PlayerAddReq,
   PlayerUpdateReq,
   PlayerRemoveReq,
+  UpgradeClientReq,
 } from '../types';
 
 export async function fetchPlayers(): Promise<PlayerListResponse> {
@@ -27,5 +28,10 @@ export async function updatePlayer(req: PlayerUpdateReq): Promise<GeneralRespons
 
 export async function removePlayer(req: PlayerRemoveReq): Promise<GeneralResponse> {
   const { data } = await apiClient.post<GeneralResponse>('/api/remove_player', req);
+  return data;
+}
+
+export async function upgradeClient(req: UpgradeClientReq): Promise<GeneralResponse> {
+  const { data } = await apiClient.post<GeneralResponse>('/api/upgrade_client', req);
   return data;
 }

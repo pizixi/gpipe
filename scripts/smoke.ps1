@@ -47,7 +47,7 @@ $json = @'
 '@ -f $databaseUrlJson, $logsJson
 [System.IO.File]::WriteAllText($config, $json, (New-Object System.Text.UTF8Encoding($false)))
 
-$server = Start-Process -FilePath $serverExe -ArgumentList "-config-file", $config -PassThru
+$server = Start-Process -FilePath $serverExe -ArgumentList "-config-file", $config -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 2
 
 if ($server.HasExited) {
@@ -63,7 +63,7 @@ try {
   Invoke-RestMethod -Uri "http://127.0.0.1:28120/api/login" -Method Post -Body (@{ username = "admin"; password = "admin@1234" } | ConvertTo-Json) -ContentType "application/json" -WebSession $session | Out-Null
   Invoke-RestMethod -Uri "http://127.0.0.1:28120/api/add_player" -Method Post -Body (@{ remark = "smoke"; key = "smoke" } | ConvertTo-Json) -ContentType "application/json" -WebSession $session | Out-Null
 
-  $client = Start-Process -FilePath $clientExe -ArgumentList "run", "--server", "tcp://127.0.0.1:28118", "--key", "smoke", "--log-dir", $logs -PassThru
+  $client = Start-Process -FilePath $clientExe -ArgumentList "run", "--server", "tcp://127.0.0.1:28118", "--key", "smoke", "--log-dir", $logs -WindowStyle Hidden -PassThru
   Start-Sleep -Seconds 5
   if (-not $client.HasExited) {
     Stop-Process -Id $client.Id -Force

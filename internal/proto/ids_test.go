@@ -57,3 +57,33 @@ func TestTunnelRuntimeReportRoundTrip(t *testing.T) {
 		t.Fatalf("decoded report = %+v, want %+v", got, report)
 	}
 }
+
+func TestClientVersionAndUpgradeMessagesRoundTrip(t *testing.T) {
+	login := &pb.LoginReq{Version: "1.2.3", Password: "secret", Platform: "windows-amd64", UpdaterVersion: 1, UpgradeTaskID: "task", UpgradeState: "rolled_back", UpgradeError: "health check failed"}
+	payload, err := Encode(login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Decode(MsgClientServerLoginReq, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decoded.(*pb.LoginReq)
+	if *got != *login {
+		t.Fatalf("login = %+v, want %+v", got, login)
+	}
+
+	offer := &pb.UpgradeOffer{TaskID: "0123456789abcdef0123456789abcdef", Version: "1.3.0", Platform: "windows-amd64", Size: 123, SHA256: "digest", Signature: "signature", ChunkSize: 131072}
+	payload, err = Encode(offer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err = Decode(MsgServerClientUpgradeOfferNtf, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotOffer := decoded.(*pb.UpgradeOffer)
+	if *gotOffer != *offer {
+		t.Fatalf("offer = %+v, want %+v", gotOffer, offer)
+	}
+}

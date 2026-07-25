@@ -28,16 +28,26 @@ type PlayerSession interface {
 }
 
 type PlayerState struct {
-	ID      uint32
-	Online  bool
-	Session PlayerSession
+	ID             uint32
+	Online         bool
+	Session        PlayerSession
+	ClientVersion  string
+	ClientPlatform string
+	UpdaterVersion uint32
+}
+
+type ClientInfo struct {
+	Version        string
+	Platform       string
+	UpdaterVersion uint32
 }
 
 type PlayerManager struct {
-	store   *store.UserStore
-	opMu    sync.Mutex
-	mu      sync.RWMutex
-	players map[uint32]*PlayerState
+	store        *store.UserStore
+	opMu         sync.Mutex
+	clientInfoMu sync.Mutex
+	mu           sync.RWMutex
+	players      map[uint32]*PlayerState
 }
 
 func NewPlayerManager(userStore *store.UserStore) *PlayerManager {
@@ -55,7 +65,10 @@ func (m *PlayerManager) LoadAll() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, user := range users {
-		m.players[user.ID] = &PlayerState{ID: user.ID}
+		m.players[user.ID] = &PlayerState{
+			ID: user.ID, ClientVersion: user.ClientVersion,
+			ClientPlatform: user.ClientPlatform, UpdaterVersion: user.UpdaterVersion,
+		}
 	}
 	return nil
 }
@@ -84,7 +97,24 @@ func (m *PlayerManager) Session(id uint32) PlayerSession {
 	return player.Session
 }
 
+func (m *PlayerManager) ClientInfo(id uint32) ClientInfo {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	player := m.players[id]
+	if player == nil {
+		return ClientInfo{}
+	}
+	return ClientInfo{
+		Version: player.ClientVersion, Platform: player.ClientPlatform,
+		UpdaterVersion: player.UpdaterVersion,
+	}
+}
+
 func (m *PlayerManager) Bind(id uint32, session PlayerSession) {
+	_ = m.BindClient(id, session, ClientInfo{})
+}
+
+func (m *PlayerManager) BindClient(id uint32, session PlayerSession, info ClientInfo) error {
 	m.opMu.Lock()
 	m.mu.Lock()
 	player := m.players[id]
@@ -95,12 +125,36 @@ func (m *PlayerManager) Bind(id uint32, session PlayerSession) {
 	oldSession := player.Session
 	player.Session = session
 	player.Online = true
+	if info.Version != "" {
+		player.ClientVersion = info.Version
+		player.ClientPlatform = info.Platform
+		player.UpdaterVersion = info.UpdaterVersion
+	}
 	m.mu.Unlock()
+
 	m.opMu.Unlock()
 
 	if oldSession != nil && oldSession != session {
 		_ = oldSession.Close()
 	}
+	if m.store == nil || info.Version == "" {
+		return nil
+	}
+
+	// Database latency must not keep the global player-operation lock held.
+	// Serialize only persistence and skip superseded login data so concurrent
+	// reconnects cannot write an older client version after a newer one.
+	m.clientInfoMu.Lock()
+	defer m.clientInfoMu.Unlock()
+	m.mu.RLock()
+	current := m.players[id]
+	shouldPersist := current != nil && current.ClientVersion == info.Version &&
+		current.ClientPlatform == info.Platform && current.UpdaterVersion == info.UpdaterVersion
+	m.mu.RUnlock()
+	if !shouldPersist {
+		return nil
+	}
+	return m.store.UpdateClientInfo(id, info.Version, info.Platform, info.UpdaterVersion)
 }
 
 func (m *PlayerManager) RecordLogin(id uint32, at time.Time) error {

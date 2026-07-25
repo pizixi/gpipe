@@ -2,8 +2,13 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/pizixi/gpipe/internal/upgrade"
 )
 
 type ServerConfig struct {
@@ -22,8 +27,11 @@ type ServerConfig struct {
 	ClientTemplateDir string `json:"client_template_dir"`
 	// ClientArtifactCacheDir 用于缓存已补丁完成的客户端下载结果。
 	ClientArtifactCacheDir string `json:"client_artifact_cache_dir"`
-	Quiet                  bool   `json:"quiet"`
-	LogDir                 string `json:"log_dir"`
+	// ClientLatestVersion is the semantic version embedded in generated client
+	// artifacts and advertised by the remote-upgrade UI.
+	ClientLatestVersion string `json:"client_latest_version"`
+	Quiet               bool   `json:"quiet"`
+	LogDir              string `json:"log_dir"`
 }
 
 func (c *ServerConfig) Normalize() {
@@ -42,5 +50,43 @@ func LoadServerConfig(path string) (*ServerConfig, error) {
 		return nil, fmt.Errorf("parse config file: %w", err)
 	}
 	cfg.Normalize()
+	if strings.TrimSpace(cfg.ClientLatestVersion) == "" {
+		manifestVersion, err := readClientTemplateManifestVersion(cfg.ClientTemplateDir)
+		if err != nil {
+			return nil, err
+		}
+		if manifestVersion == "" {
+			manifestVersion = "1.0.0"
+		}
+		cfg.ClientLatestVersion = manifestVersion
+	}
+	if !upgrade.IsValidVersion(cfg.ClientLatestVersion) {
+		return nil, fmt.Errorf("client_latest_version must be a semantic version, got %q", cfg.ClientLatestVersion)
+	}
 	return &cfg, nil
+}
+
+func readClientTemplateManifestVersion(templateDir string) (string, error) {
+	if strings.TrimSpace(templateDir) == "" {
+		return "", nil
+	}
+	manifestPath := filepath.Join(templateDir, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read client template manifest: %w", err)
+	}
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return "", fmt.Errorf("parse client template manifest: %w", err)
+	}
+	version := strings.TrimSpace(manifest.Version)
+	if version == "" {
+		return "", errors.New("client template manifest version is empty")
+	}
+	return version, nil
 }

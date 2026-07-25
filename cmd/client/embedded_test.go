@@ -81,3 +81,23 @@ func TestParseCommonArgsUsesEmbeddedDefaultsAndAllowsOverrides(t *testing.T) {
 		t.Fatalf("override key = %q, want embedded key", override.Key)
 	}
 }
+
+func TestEmbeddedConfigWithoutShadowsocksDoesNotEnableProxy(t *testing.T) {
+	previous := embeddedClientConfig
+	t.Cleanup(func() { embeddedClientConfig = previous })
+	value, err := clientbin.Encode(clientbin.EmbeddedConfig{Server: "tcp://127.0.0.1:8118", Key: "demo-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	embeddedClientConfig = value
+	common, err := parseCommonArgs(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if common.SSServer != "" || common.SSMethod != "" || common.SSPassword != "" {
+		t.Fatalf("Shadowsocks was unexpectedly enabled: %+v", common)
+	}
+	if err := validateCommonArgs(common); err != nil {
+		t.Fatalf("embedded config should be runnable: %v", err)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -27,6 +28,7 @@ type Options struct {
 	ArtifactCacheDir string
 	GoBinary         string
 	RepoRoot         string
+	Version          string
 }
 
 // Target 描述一个可下载的客户端平台版本。
@@ -41,13 +43,20 @@ type Target struct {
 
 // Artifact 是最终返回给浏览器下载的二进制产物。
 type Artifact struct {
-	Filename string
-	Data     []byte
+	Filename    string
+	Data        []byte
+	Version     string
+	UpgradeSafe bool
 }
 
 // Builder 统一抽象客户端下载构建过程，便于 Web 层替换实现或测试注入。
 type Builder interface {
 	Build(ctx context.Context, player model.User, settings model.ClientBuildSettings, targetID string) (*Artifact, error)
+}
+
+type UpgradeBuilder interface {
+	Builder
+	CanUpgrade(targetID string) bool
 }
 
 // RuntimeBuilder 支持“模板补丁优先，源码编译回退”的双模式构建。
@@ -192,11 +201,15 @@ func (b *RuntimeBuilder) Build(ctx context.Context, player model.User, settings 
 		if err != nil {
 			return nil, err
 		}
+		version, upgradeSafe, err := b.validateTemplateManifest(templatePath, target, templateData)
+		if err != nil {
+			return nil, err
+		}
 
 		// 缓存键同时包含模板内容和内置配置，避免旧模板或旧参数命中错误产物。
 		cacheKey := artifactCacheKey(target.ID, templateData, encodedConfig)
 		if data, ok, err := b.loadCachedArtifact(target, cacheKey); err == nil && ok {
-			return &Artifact{Filename: downloadFilename(player.ID, target), Data: data}, nil
+			return &Artifact{Filename: downloadFilename(player.ID, target), Data: data, Version: version, UpgradeSafe: upgradeSafe}, nil
 		}
 
 		patched, err := patchTemplateBinary(templateData, encodedConfig)
@@ -205,12 +218,37 @@ func (b *RuntimeBuilder) Build(ctx context.Context, player model.User, settings 
 		}
 		_ = b.storeCachedArtifact(target, cacheKey, patched)
 		return &Artifact{
-			Filename: downloadFilename(player.ID, target),
-			Data:     patched,
+			Filename:    downloadFilename(player.ID, target),
+			Data:        patched,
+			Version:     version,
+			UpgradeSafe: upgradeSafe,
 		}, nil
 	}
 
 	return b.compileWithGoBuild(ctx, player, target, encodedConfig)
+}
+
+// CanUpgrade performs a read-only readiness check used by the player list. A
+// verified template is preferred; source compilation is a supported fallback
+// only when both the repository and Go toolchain are actually available.
+func (b *RuntimeBuilder) CanUpgrade(targetID string) bool {
+	target, ok := LookupTarget(targetID)
+	if !ok {
+		return false
+	}
+	if templatePath, found := b.findTemplatePath(target); found {
+		data, err := os.ReadFile(templatePath)
+		if err != nil {
+			return false
+		}
+		_, safe, err := b.validateTemplateManifest(templatePath, target, data)
+		return err == nil && safe
+	}
+	if _, err := exec.LookPath(b.resolveGoBinary()); err != nil {
+		return false
+	}
+	_, err := b.resolveRepoRoot()
+	return err == nil
 }
 
 // patchTemplateBinary 把模板二进制里的固定占位串替换成真实配置。
@@ -263,10 +301,8 @@ func (b *RuntimeBuilder) compileWithGoBuild(ctx context.Context, player model.Us
 		"-trimpath",
 		"-buildvcs=false",
 		"-ldflags",
-		fmt.Sprintf(
-			"-s -w -X main.embeddedClientConfig=%s",
-			encodedConfig,
-		),
+		fmt.Sprintf("-s -w -X main.embeddedClientConfig=%s -X main.clientVersion=%s -X main.clientPlatform=%s",
+			encodedConfig, b.clientVersion(), target.ID),
 		"-o",
 		outputPath,
 		"./cmd/client",
@@ -294,9 +330,66 @@ func (b *RuntimeBuilder) compileWithGoBuild(ctx context.Context, player model.Us
 		return nil, err
 	}
 	return &Artifact{
-		Filename: downloadFilename(player.ID, target),
-		Data:     data,
+		Filename:    downloadFilename(player.ID, target),
+		Data:        data,
+		Version:     b.clientVersion(),
+		UpgradeSafe: true,
 	}, nil
+}
+
+type templateManifest struct {
+	Version   string `json:"version"`
+	Artifacts []struct {
+		Target string `json:"target"`
+		File   string `json:"file"`
+		SHA256 string `json:"sha256"`
+	} `json:"artifacts"`
+}
+
+func (b *RuntimeBuilder) validateTemplateManifest(templatePath string, target Target, data []byte) (string, bool, error) {
+	manifestPath := filepath.Join(filepath.Dir(templatePath), "manifest.json")
+	raw, err := os.ReadFile(manifestPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// Legacy templates remain downloadable, but are deliberately excluded
+		// from unattended remote upgrades because their version cannot be proven.
+		return b.clientVersion(), false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	var manifest templateManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return "", false, fmt.Errorf("parse client template manifest: %w", err)
+	}
+	for _, artifact := range manifest.Artifacts {
+		if artifact.Target != target.ID {
+			continue
+		}
+		if artifact.File != filepath.Base(templatePath) {
+			return "", false, errors.New("client template manifest filename mismatch")
+		}
+		if strings.ToLower(artifact.SHA256) != artifactCacheKeyBytes(data) {
+			return "", false, errors.New("client template checksum does not match manifest")
+		}
+		// A version mismatch can happen briefly while release files are being
+		// deployed. The template is still safe for a manual download after its
+		// filename and checksum are verified, but it must never be advertised as
+		// the configured remote-upgrade target.
+		return manifest.Version, manifest.Version == b.clientVersion(), nil
+	}
+	return "", false, fmt.Errorf("client template manifest has no artifact for %s", target.ID)
+}
+
+func artifactCacheKeyBytes(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func (b *RuntimeBuilder) clientVersion() string {
+	if value := strings.TrimSpace(b.options.Version); value != "" {
+		return value
+	}
+	return "1.0.0"
 }
 
 // loadCachedArtifact 从缓存目录读取已经补丁完成的二进制。
@@ -425,7 +518,6 @@ func (b *RuntimeBuilder) resolveRepoRoot() (string, error) {
 	}
 	for _, candidate := range candidates {
 		if root, ok := findRepoRoot(candidate); ok {
-			b.options.RepoRoot = root
 			return root, nil
 		}
 	}

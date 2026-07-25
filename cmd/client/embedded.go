@@ -19,15 +19,18 @@ func embeddedCommonArgs() (commonArgs, bool, error) {
 	if !config.HasRequiredRuntimeValues() {
 		return commonArgs{}, false, nil
 	}
-	return commonArgs{
+	common := commonArgs{
 		Server:        config.Server,
 		Key:           config.Key,
 		EnableTLS:     config.EnableTLS,
 		TLSServerName: config.TLSServerName,
-		SSServer:      config.SSServer,
-		SSMethod:      config.SSMethod,
-		SSPassword:    config.SSPassword,
 		LogLevel:      "info",
 		BaseLogLevel:  "error",
-	}, true, nil
+	}
+	if config.UseShadowsocks {
+		common.SSServer = config.SSServer
+		common.SSMethod = config.SSMethod
+		common.SSPassword = config.SSPassword
+	}
+	return common, true, nil
 }

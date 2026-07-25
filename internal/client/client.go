@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"github.com/pizixi/gpipe/internal/pb"
 	"github.com/pizixi/gpipe/internal/proxy"
 	"github.com/pizixi/gpipe/internal/transport"
+	"github.com/pizixi/gpipe/internal/upgrade"
 
 	"github.com/gorilla/websocket"
 	quic "github.com/quic-go/quic-go"
@@ -47,7 +49,10 @@ type Options struct {
 	// - nil：直连（不使用任何代理）
 	// - 非 nil：通过该函数拨号（例如 Shadowsocks、SOCKS5）
 	// 仅对基于 TCP 的传输生效（tcp://、ws://）；quic://、kcp:// 仍使用 UDP 原生拨号。
-	Dial DialFunc
+	Dial     DialFunc
+	Version  string
+	Platform string
+	Upgrader *upgrade.Receiver
 }
 
 type App struct {
@@ -62,6 +67,7 @@ type clientSession struct {
 	lastActive atomic.Int64
 	tunnels    map[uint32]*pb.Tunnel
 	proxyMgr   *proxy.Manager
+	upgrader   *upgrade.Receiver
 	closeOnce  sync.Once
 }
 
@@ -98,6 +104,9 @@ func (a *App) RunContext(ctx context.Context) error {
 				continue
 			}
 			if err := a.runOne(ctx, u); err != nil {
+				if errors.Is(err, upgrade.ErrApplyStarted) {
+					return err
+				}
 				a.opts.Logger.Printf("client run error: %s", sanitizeClientLogError(err))
 				select {
 				case <-ctx.Done():
@@ -123,10 +132,18 @@ func (a *App) runOne(ctx context.Context, u *url.URL) error {
 	session := newClientSession(a.opts, conn)
 	defer session.close()
 
-	if err := session.send(-1, &pb.LoginReq{
-		Version:  "0.0.0",
-		Password: session.opts.Key,
-	}); err != nil {
+	login := &pb.LoginReq{
+		Version:        session.opts.Version,
+		Password:       session.opts.Key,
+		Platform:       session.opts.Platform,
+		UpdaterVersion: updaterProtocolVersion(session.opts.Upgrader),
+	}
+	if session.opts.Upgrader != nil {
+		if result := session.opts.Upgrader.PendingResult(); result != nil {
+			login.UpgradeTaskID, login.UpgradeState, login.UpgradeError = result.TaskID, result.State, result.Error
+		}
+	}
+	if err := session.send(-1, login); err != nil {
 		return err
 	}
 
@@ -303,9 +320,10 @@ func handshakeClientTLSConn(conn net.Conn, cfg *tls.Config) (net.Conn, error) {
 
 func newClientSession(opts Options, conn net.Conn) *clientSession {
 	session := &clientSession{
-		opts:    opts,
-		conn:    conn,
-		tunnels: map[uint32]*pb.Tunnel{},
+		opts:     opts,
+		conn:     conn,
+		tunnels:  map[uint32]*pb.Tunnel{},
+		upgrader: opts.Upgrader,
 	}
 	session.touch()
 	return session
@@ -404,6 +422,12 @@ func (s *clientSession) handleFrame(frame []byte) error {
 				})
 			}
 			s.proxyMgr.SyncTunnels(msg.TunnelList)
+			if s.upgrader != nil {
+				s.upgrader.MarkHealthy()
+				if report := s.upgrader.PendingResult(); report != nil {
+					s.upgrader.AcknowledgeResult(report.TaskID)
+				}
+			}
 			s.opts.Logger.Printf("login successful, player id: %d", s.playerID)
 			return nil
 		case *pb.Error:
@@ -415,6 +439,30 @@ func (s *clientSession) handleFrame(frame []byte) error {
 
 	if serial == 0 {
 		switch msg := message.(type) {
+		case *pb.UpgradeOffer:
+			if s.upgrader == nil {
+				return nil
+			}
+			report := s.upgrader.Accept(msg)
+			if err := s.send(0, report); err != nil {
+				return err
+			}
+			if report.State == "verifying" {
+				return s.startUpgradeApply(msg.TaskID, report.Offset)
+			}
+			return nil
+		case *pb.UpgradeChunk:
+			if s.upgrader == nil {
+				return nil
+			}
+			report, ready := s.upgrader.HandleChunk(msg)
+			if err := s.send(0, report); err != nil {
+				return err
+			}
+			if !ready {
+				return nil
+			}
+			return s.startUpgradeApply(msg.TaskID, report.Offset)
 		case *pb.ModifyTunnelNtf:
 			if msg.Tunnel == nil {
 				return nil
@@ -435,6 +483,26 @@ func (s *clientSession) handleFrame(frame []byte) error {
 		}
 	}
 	return nil
+}
+
+func (s *clientSession) startUpgradeApply(taskID string, offset int64) error {
+	err := s.upgrader.StartApply()
+	if errors.Is(err, upgrade.ErrApplyStarted) {
+		_ = s.send(0, &pb.UpgradeStatusReport{TaskID: taskID, State: "applying", Offset: offset})
+		return err
+	}
+	if err != nil {
+		_ = s.send(0, &pb.UpgradeStatusReport{TaskID: taskID, State: "failed", Offset: offset, Error: err.Error()})
+		return err
+	}
+	return nil
+}
+
+func updaterProtocolVersion(receiver *upgrade.Receiver) uint32 {
+	if receiver == nil {
+		return 0
+	}
+	return upgrade.ProtocolVersion
 }
 
 func (s *clientSession) pingLoop(ctx context.Context) error {

@@ -341,6 +341,10 @@ func (s *Session) handlePush(message proto.Message) error {
 		s.handleTunnelRuntimeReport(report)
 		return nil
 	}
+	if report, ok := message.(*pb.UpgradeStatusReport); ok {
+		s.handleUpgradeStatus(report)
+		return nil
+	}
 	tunnelID, fromPlayer, toPlayer, ok := s.resolveRoute(message)
 	if !ok {
 		return nil
@@ -359,6 +363,23 @@ func (s *Session) handlePush(message proto.Message) error {
 		return s.handleOfflineProxy(message, tunnelID, fromPlayer)
 	}
 	return nil
+}
+
+func (s *Session) handleUpgradeStatus(report *pb.UpgradeStatusReport) {
+	if report == nil || s.hub.runtime == nil || s.hub.runtime.Upgrades == nil {
+		return
+	}
+	chunk, err := s.hub.runtime.Upgrades.HandleStatus(s.playerID, report)
+	if err != nil {
+		s.logger.Printf("client upgrade status rejected: player=%d task=%s err=%v", s.playerID, report.TaskID, err)
+		return
+	}
+	if chunk != nil {
+		if err := s.SendPush(chunk); err != nil {
+			s.hub.runtime.Upgrades.Fail(s.playerID, report.TaskID, err)
+			_ = s.Close()
+		}
+	}
 }
 
 func (s *Session) handleTunnelRuntimeReport(report *pb.TunnelRuntimeReport) {
@@ -473,7 +494,19 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 		s.logger.Printf("record player login info failed: player=%d err=%v", user.ID, err)
 	}
 	s.hub.registerPlayer(user.ID, s)
-	s.hub.runtime.Players.Bind(user.ID, s)
+	if err := s.hub.runtime.Players.BindClient(user.ID, s, manager.ClientInfo{
+		Version: msg.Version, Platform: msg.Platform, UpdaterVersion: msg.UpdaterVersion,
+	}); err != nil {
+		s.logger.Printf("record player client info failed: player=%d err=%v", user.ID, err)
+	}
+	if s.hub.runtime.Upgrades != nil {
+		if msg.UpgradeTaskID != "" {
+			if _, err := s.hub.runtime.Upgrades.HandleStatus(user.ID, &pb.UpgradeStatusReport{TaskID: msg.UpgradeTaskID, State: msg.UpgradeState, Error: msg.UpgradeError}); err != nil {
+				s.logger.Printf("record previous upgrade result failed: player=%d task=%s err=%v", user.ID, msg.UpgradeTaskID, err)
+			}
+		}
+		s.hub.runtime.Upgrades.CompleteOnLogin(user.ID, msg.Version)
+	}
 	tunnels := s.hub.runtime.Tunnel.ByPlayer(user.ID)
 	reply := &pb.LoginAck{
 		PlayerID:                    user.ID,
@@ -483,6 +516,18 @@ func (s *Session) onLogin(msg *pb.LoginReq) proto.Message {
 		reply.TunnelList = append(reply.TunnelList, s.hub.runtimeTunnelPB(tunnel))
 	}
 	s.hub.broadcastPlayerTunnelStates(user.ID, user.ID)
+	// The login response must be queued before any push. Delay a resumable
+	// offer slightly so reconnecting clients always finish login first.
+	time.AfterFunc(500*time.Millisecond, func() {
+		if s.hub.runtime == nil || s.hub.runtime.Upgrades == nil || s.hub.runtime.Players.Session(user.ID) != s {
+			return
+		}
+		if offer := s.hub.runtime.Upgrades.Offer(user.ID); offer != nil {
+			if err := s.SendPush(offer); err != nil {
+				_ = s.Close()
+			}
+		}
+	})
 	return reply
 }
 

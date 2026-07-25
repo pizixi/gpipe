@@ -35,10 +35,13 @@ func (playerSessionStub) SendPush(message proto.Message) error {
 type clientBuilderStub struct {
 	artifact     *clientbuild.Artifact
 	err          error
+	canUpgrade   bool
 	lastPlayer   model.User
 	lastSettings model.ClientBuildSettings
 	lastTarget   string
 }
+
+func (s *clientBuilderStub) CanUpgrade(_ string) bool { return s.canUpgrade }
 
 func (s *clientBuilderStub) Build(_ context.Context, player model.User, settings model.ClientBuildSettings, targetID string) (*clientbuild.Artifact, error) {
 	s.lastPlayer = player
@@ -665,6 +668,60 @@ func TestPlayerListReturnsClientLoginInfo(t *testing.T) {
 	player := resp.Players[0]
 	if player.LastOnlineTime == nil || !player.LastOnlineTime.Equal(lastOnline) {
 		t.Fatalf("last_online_time = %v, want %v", player.LastOnlineTime, lastOnline)
+	}
+}
+
+func TestPlayerListAllowsVerifiedUpgradeAndReturnsSpecificBlockReason(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_web_player_upgrade_eligibility?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, playerID, err := rt.Players.Add("alice", "secret1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Players.BindClient(playerID, playerSessionStub{}, manager.ClientInfo{
+		Version: "0.1.0", Platform: "windows-amd64", UpdaterVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(&config.ServerConfig{
+		WebUsername: "admin", WebPassword: "secret", ClientLatestVersion: "0.1.1",
+	}, rt)
+	service.clientBuilder = &clientBuilderStub{canUpgrade: true}
+
+	list := func() PlayerListItem {
+		req := httptest.NewRequest(http.MethodPost, "/api/player_list", strings.NewReader(`{"page_number":0,"page_size":0}`))
+		req.AddCookie(&http.Cookie{Name: authCookieName, Value: service.signedCookieValue(time.Now().Add(time.Minute))})
+		recorder := httptest.NewRecorder()
+		service.playerList(recorder, req)
+		var response PlayerListResponse
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if len(response.Players) != 1 {
+			t.Fatalf("players = %d, want 1", len(response.Players))
+		}
+		return response.Players[0]
+	}
+
+	item := list()
+	if !item.CanUpgrade || item.UpgradeUnavailableReason != "" || item.IsLatest {
+		t.Fatalf("upgradeable player = %+v", item)
+	}
+	if err := rt.Players.BindClient(playerID, playerSessionStub{}, manager.ClientInfo{
+		Version: "0.2.0", Platform: "windows-amd64", UpdaterVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	item = list()
+	if item.CanUpgrade || item.IsLatest || item.UpgradeUnavailableReason != upgradeReasonClientNewer {
+		t.Fatalf("newer player = %+v", item)
 	}
 }
 

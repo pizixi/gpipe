@@ -12,13 +12,9 @@ import (
 	"sync"
 	"time"
 
-	servicepkg "github.com/kardianos/service"
-)
+	"github.com/pizixi/gpipe/internal/upgrade"
 
-const (
-	serviceName        = "gpipe_client"
-	serviceDisplayName = "gpipe client"
-	serviceDescription = "go net pipe client"
+	servicepkg "github.com/kardianos/service"
 )
 
 // serviceProgram 把客户端主循环挂到系统服务生命周期里。
@@ -44,7 +40,16 @@ func (p *serviceProgram) Start(_ servicepkg.Service) error {
 
 	// 服务管理器要求 Start 快速返回，因此实际业务循环放到后台协程。
 	go func() {
-		done <- runCommandContext(ctx, p.common)
+		err := runCommandContext(ctx, p.common, "service")
+		done <- err
+		if errors.Is(err, upgrade.ErrApplyStarted) {
+			// runCommandContext has already returned, so its connection and log
+			// cleanup defers have completed. The service host itself must now exit:
+			// the detached helper is waiting for this PID before replacing the
+			// executable, and merely returning from this goroutine would leave
+			// service.Run blocked inside the service framework.
+			os.Exit(0)
+		}
 	}()
 	return nil
 }
@@ -89,9 +94,9 @@ func installService(args []string) error {
 	// 然后将这些参数拼接到服务命令行中；否则服务启动时不带额外参数，
 	// 直接使用二进制内置的嵌入式配置。
 	var (
-		common     commonArgs
-		svcArgs    []string
-		hasCustom  = len(args) > 0
+		common    commonArgs
+		svcArgs   []string
+		hasCustom = len(args) > 0
 	)
 
 	if hasCustom {

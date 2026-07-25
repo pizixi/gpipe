@@ -40,9 +40,14 @@ type Tunnel struct {
 }
 
 type LoginReq struct {
-	Version  string `json:"version"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Version        string `json:"version"`
+	Username       string `json:"username"`
+	Password       string `json:"password"`
+	Platform       string `json:"platform"`
+	UpdaterVersion uint32 `json:"updater_version"`
+	UpgradeTaskID  string `json:"upgrade_task_id"`
+	UpgradeState   string `json:"upgrade_state"`
+	UpgradeError   string `json:"upgrade_error"`
 }
 
 type RegisterReq struct {
@@ -75,6 +80,34 @@ type TunnelRuntimeReport struct {
 	Component string `json:"component"`
 	Running   bool   `json:"running"`
 	Error     string `json:"error"`
+}
+
+// UpgradeOffer is a signed description of an upgrade artifact. The payload is
+// transferred separately in bounded chunks so normal tunnel traffic is never
+// blocked by one very large protocol frame.
+type UpgradeOffer struct {
+	TaskID    string `json:"task_id"`
+	Version   string `json:"version"`
+	Platform  string `json:"platform"`
+	Size      int64  `json:"size"`
+	SHA256    string `json:"sha256"`
+	Signature string `json:"signature"`
+	ChunkSize uint32 `json:"chunk_size"`
+}
+
+type UpgradeChunk struct {
+	TaskID string `json:"task_id"`
+	Offset int64  `json:"offset"`
+	Data   []byte `json:"data"`
+	SHA256 string `json:"sha256"`
+	EOF    bool   `json:"eof"`
+}
+
+type UpgradeStatusReport struct {
+	TaskID string `json:"task_id"`
+	State  string `json:"state"`
+	Offset int64  `json:"offset"`
+	Error  string `json:"error"`
 }
 
 type Success struct{}

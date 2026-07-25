@@ -262,6 +262,121 @@
   color: #94a3b8;
 }
 
+.dashboard-data-table .client-version-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d8e1ea;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ffffff, #f4f7fa);
+  color: #475569;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dashboard-data-table .client-version-badge:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-data-table .client-version-badge--upgrade {
+  border-color: #f5b942;
+  background: linear-gradient(135deg, #fffaf0, #ffedbd);
+  color: #92400e;
+  box-shadow: 0 2px 9px rgba(217, 119, 6, 0.18);
+}
+
+.dashboard-data-table .client-version-badge--upgrade:hover {
+  border-color: #d97706;
+  box-shadow: 0 4px 14px rgba(217, 119, 6, 0.26);
+}
+
+.dashboard-data-table .client-version-badge--latest {
+  border-color: #86efac;
+  background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+  color: #15803d;
+}
+
+.dashboard-data-table .client-version-badge--active {
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, #eff6ff, #dbeafe);
+  color: #1d4ed8;
+}
+
+.dashboard-data-table .client-version-badge--unavailable,
+.dashboard-data-table .client-version-badge--unknown {
+  border-color: #d8e1ea;
+  background: linear-gradient(135deg, #ffffff, #f1f5f9);
+  color: #64748b;
+}
+
+.dashboard-data-table .client-version-current,
+.dashboard-data-table .client-version-target,
+.dashboard-data-table .client-version-progress {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dashboard-data-table .client-version-target {
+  color: #b45309;
+  font-weight: 800;
+}
+
+.dashboard-data-table .client-version-arrow {
+  flex: 0 0 auto;
+  color: #d97706;
+  font-size: 11px;
+}
+
+.dashboard-data-table .client-version-error-icon {
+  flex: 0 0 auto;
+  color: #dc2626;
+}
+
+.client-version-tooltip {
+  min-width: 210px;
+  display: grid;
+  gap: 6px;
+}
+
+.client-version-tooltip > div:not(.client-version-tooltip-highlight):not(.client-version-tooltip-warning):not(.client-version-tooltip-error) {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.client-version-tooltip span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.client-version-tooltip strong {
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.client-version-tooltip-highlight {
+  margin-top: 2px;
+  color: #fcd34d;
+  font-weight: 600;
+}
+
+.client-version-tooltip-warning {
+  margin-top: 2px;
+  color: #fde68a;
+}
+
+.client-version-tooltip-error {
+  margin-top: 2px;
+  color: #fca5a5;
+}
+
 .dashboard-data-table .protocol-badge {
   display: inline-flex;
   align-items: center;

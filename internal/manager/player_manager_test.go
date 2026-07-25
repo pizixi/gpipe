@@ -227,3 +227,29 @@ func TestDeleteRejectsOnlinePlayer(t *testing.T) {
 		t.Fatalf("expected player to remain after rejected delete")
 	}
 }
+
+func TestBindClientPersistsReportedVersionAndPlatform(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_player_client_info?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	rt, err := NewRuntime(database, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, id, err := rt.Players.Add("版本玩家", "versionKey")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Players.BindClient(id, &playerSessionStub{}, ClientInfo{Version: "1.2.3", Platform: "linux-arm64", UpdaterVersion: 1}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := rt.Users.FindByID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.ClientVersion != "1.2.3" || user.ClientPlatform != "linux-arm64" || user.UpdaterVersion != 1 {
+		t.Fatalf("client info was not persisted: %+v", user)
+	}
+}

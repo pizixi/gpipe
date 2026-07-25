@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/pizixi/gpipe/internal/client"
 	"github.com/pizixi/gpipe/internal/logx"
+	"github.com/pizixi/gpipe/internal/upgrade"
 )
 
 type commonArgs struct {
@@ -53,12 +56,16 @@ func main() {
 		if err := runServiceCommand(common); err != nil {
 			log.Fatal(err)
 		}
+	case "apply-update":
+		if err := runApplyUpdate(args); err != nil {
+			log.Fatal(err)
+		}
 	case "run":
 		common, err := parseCommonArgs(args)
 		if err != nil {
 			log.Fatal(err)
 		}
-		if err := runCommand(common); err != nil {
+		if err := runCommand(common); err != nil && !errors.Is(err, upgrade.ErrApplyStarted) {
 			log.Fatal(err)
 		}
 	default:
@@ -67,10 +74,10 @@ func main() {
 }
 
 func runCommand(common commonArgs) error {
-	return runCommandContext(context.Background(), common)
+	return runCommandContext(context.Background(), common, "foreground")
 }
 
-func runCommandContext(ctx context.Context, common commonArgs) error {
+func runCommandContext(ctx context.Context, common commonArgs, mode string) error {
 	prepareRuntime(common)
 
 	if err := validateCommonArgs(common); err != nil {
@@ -89,6 +96,14 @@ func runCommandContext(ctx context.Context, common commonArgs) error {
 		return err
 	}
 
+	receiver, err := upgrade.NewReceiver(upgrade.RuntimeOptions{
+		Enabled: true, Version: clientVersion, Platform: effectiveClientPlatform(), Key: common.Key,
+		Mode: mode, RestartArgs: append([]string(nil), os.Args[1:]...), ServiceName: serviceName, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+
 	app := client.New(client.Options{
 		Server:        common.Server,
 		Key:           common.Key,
@@ -98,8 +113,24 @@ func runCommandContext(ctx context.Context, common commonArgs) error {
 		CACert:        common.CACert,
 		Logger:        logger,
 		Dial:          dial,
+		Version:       clientVersion,
+		Platform:      effectiveClientPlatform(),
+		Upgrader:      receiver,
 	})
 	return app.RunContext(ctx)
+}
+
+func runApplyUpdate(args []string) error {
+	fs := flag.NewFlagSet("apply-update", flag.ContinueOnError)
+	fs.SetOutput(new(noopWriter))
+	statePath := fs.String("state", "", "upgrade state file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *statePath == "" {
+		return fmt.Errorf("upgrade state file is required")
+	}
+	return upgrade.RunApplyHelper(*statePath)
 }
 
 // prepareRuntime 把与运行时相关的公共开关提前落到进程环境中。

@@ -22,6 +22,15 @@ export interface PlayerListItem {
   create_time: string;
   last_online_time: string | null;
   online: boolean;
+  client_version: string;
+  client_platform: string;
+  latest_version: string;
+  is_latest: boolean;
+  can_upgrade: boolean;
+  upgrade_unavailable_reason: string;
+  upgrade_status: string;
+  upgrade_progress: number;
+  upgrade_error: string;
 }
 
 export interface PlayerListResponse {
@@ -58,6 +67,8 @@ export interface GenerateClientReq {
 export interface PlayerRemoveReq {
   id: number;
 }
+
+export interface UpgradeClientReq { player_id: number; }
 
 export interface PlayerAddReq {
   remark: string;

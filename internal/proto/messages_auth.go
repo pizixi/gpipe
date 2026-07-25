@@ -15,6 +15,11 @@ func marshalLoginReq(m *pb.LoginReq) []byte {
 	if m.Password != "" {
 		b = appendStringField(b, 3, m.Password)
 	}
+	b = appendStringField(b, 4, m.Platform)
+	b = appendUint32Field(b, 5, m.UpdaterVersion)
+	b = appendStringField(b, 6, m.UpgradeTaskID)
+	b = appendStringField(b, 7, m.UpgradeState)
+	b = appendStringField(b, 8, m.UpgradeError)
 	return b
 }
 
@@ -41,6 +46,36 @@ func unmarshalLoginReq(data []byte) (*pb.LoginReq, error) {
 				return nil, fieldTypeError(num, typ, protowire.BytesType)
 			}
 			msg.Password, err = readString(field)
+		case 4:
+			if typ != protowire.BytesType {
+				return nil, fieldTypeError(num, typ, protowire.BytesType)
+			}
+			msg.Platform, err = readString(field)
+		case 5:
+			if typ != protowire.VarintType {
+				return nil, fieldTypeError(num, typ, protowire.VarintType)
+			}
+			v, readErr := readVarint(field)
+			if readErr != nil {
+				return nil, readErr
+			}
+			msg.UpdaterVersion = uint32(v)
+		case 6, 7, 8:
+			if typ != protowire.BytesType {
+				return nil, fieldTypeError(num, typ, protowire.BytesType)
+			}
+			value, readErr := readString(field)
+			if readErr != nil {
+				return nil, readErr
+			}
+			switch num {
+			case 6:
+				msg.UpgradeTaskID = value
+			case 7:
+				msg.UpgradeState = value
+			case 8:
+				msg.UpgradeError = value
+			}
 		}
 		if err != nil {
 			return nil, err

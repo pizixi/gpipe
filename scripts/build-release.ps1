@@ -3,6 +3,7 @@ param(
     [string]$ConfigPath = ".\gpipe.json",
     [string]$ServerGOOS = "",
     [string]$ServerGOARCH = "",
+    [string]$Version = "1.0.0",
     [switch]$SkipTemplates,
     [switch]$SkipCerts,
     [switch]$SkipFrontend,
@@ -167,7 +168,7 @@ try {
 
     if (-not $SkipTemplates) {
         Write-Host "Building client templates -> $templateDir"
-        & (Join-Path $PSScriptRoot "build-client-templates.ps1") -OutputDir $templateDir
+        & (Join-Path $PSScriptRoot "build-client-templates.ps1") -OutputDir $templateDir -Version $Version
         if ($LASTEXITCODE -ne 0) {
             throw "build-client-templates.ps1 failed"
         }
@@ -182,6 +183,7 @@ $configObject = Get-Content -LiteralPath $resolvedConfigPath -Raw | ConvertFrom-
 Set-JsonProperty -Object $configObject -Name "database_url" -Value "sqlite://gpipe.db?mode=rwc"
 Set-JsonProperty -Object $configObject -Name "client_template_dir" -Value "./client-templates"
 Set-JsonProperty -Object $configObject -Name "client_artifact_cache_dir" -Value "./client-cache"
+Set-JsonProperty -Object $configObject -Name "client_latest_version" -Value $Version
 Set-JsonProperty -Object $configObject -Name "log_dir" -Value "logs"
 if ($null -eq $configObject.PSObject.Properties["quiet"]) {
     Set-JsonProperty -Object $configObject -Name "quiet" -Value $false

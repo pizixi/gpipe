@@ -106,6 +106,62 @@ func TestLookupTargetLinuxArmV7(t *testing.T) {
 	}
 }
 
+func TestCanUpgradeRequiresMatchingVerifiedTemplateManifest(t *testing.T) {
+	templateDir := t.TempDir()
+	target, _ := LookupTarget("linux-amd64")
+	templateData := []byte("signed-template-content")
+	templatePath := filepath.Join(templateDir, target.TemplateName)
+	if err := os.WriteFile(templatePath, templateData, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"version":"1.2.3","artifacts":[{"target":"linux-amd64","file":"` + target.TemplateName + `","sha256":"` + artifactCacheKeyBytes(templateData) + `"}]}`
+	if err := os.WriteFile(filepath.Join(templateDir, "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	builder := NewBuilder(Options{TemplateDir: templateDir, Version: "1.2.3"})
+	if !builder.CanUpgrade(target.ID) {
+		t.Fatal("verified template should be upgrade-capable")
+	}
+	if err := os.WriteFile(templatePath, []byte("tampered"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if builder.CanUpgrade(target.ID) {
+		t.Fatal("tampered template must not be upgrade-capable")
+	}
+}
+
+func TestBuildAllowsVersionMismatchedVerifiedTemplateButDisablesUpgrade(t *testing.T) {
+	templateDir := t.TempDir()
+	target, _ := LookupTarget("linux-amd64")
+	templateData := append([]byte("template-begin"), []byte(clientbin.PlaceholderValue())...)
+	templateData = append(templateData, []byte("template-end")...)
+	templatePath := filepath.Join(templateDir, target.TemplateName)
+	if err := os.WriteFile(templatePath, templateData, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"version":"1.1.0","artifacts":[{"target":"linux-amd64","file":"` + target.TemplateName + `","sha256":"` + artifactCacheKeyBytes(templateData) + `"}]}`
+	if err := os.WriteFile(filepath.Join(templateDir, "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	builder := NewBuilder(Options{TemplateDir: templateDir, Version: "1.2.0"})
+	artifact, err := builder.Build(context.Background(), model.User{ID: 7, Key: "secret"}, model.ClientBuildSettings{Server: "tcp://127.0.0.1:8118"}, target.ID)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if artifact.Version != "1.1.0" || artifact.UpgradeSafe {
+		t.Fatalf("artifact version/safety = %q/%t, want 1.1.0/false", artifact.Version, artifact.UpgradeSafe)
+	}
+	if builder.CanUpgrade(target.ID) {
+		t.Fatal("version-mismatched template must not be upgrade-capable")
+	}
+	if err := os.WriteFile(templatePath, []byte("tampered"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := builder.Build(context.Background(), model.User{ID: 7, Key: "secret"}, model.ClientBuildSettings{Server: "tcp://127.0.0.1:8118"}, target.ID); err == nil {
+		t.Fatal("checksum-mismatched template must still fail manual builds")
+	}
+}
+
 // 验证模板构建命令通过 -ldflags 注入完整占位串，服务端后续才能在二进制里定位并替换。
 func TestGoBuildTemplateContainsPatchablePlaceholder(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)

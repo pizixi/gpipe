@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -25,9 +26,21 @@ import (
 	"github.com/pizixi/gpipe/internal/config"
 	"github.com/pizixi/gpipe/internal/manager"
 	"github.com/pizixi/gpipe/internal/model"
+	"github.com/pizixi/gpipe/internal/upgrade"
 )
 
 const authCookieName = "auth-id"
+
+const (
+	upgradeReasonOffline             = "offline"
+	upgradeReasonUpdaterUnsupported  = "updater_unsupported"
+	upgradeReasonPlatformUnknown     = "platform_unknown"
+	upgradeReasonVersionInvalid      = "version_invalid"
+	upgradeReasonAlreadyLatest       = "already_latest"
+	upgradeReasonClientNewer         = "client_newer"
+	upgradeReasonInProgress          = "in_progress"
+	upgradeReasonArtifactUnavailable = "artifact_unavailable"
+)
 const authCookieTTL = 7 * 24 * time.Hour
 const authCookieRefreshThreshold = 24 * time.Hour
 const maxJSONBodyBytes int64 = 1 << 20
@@ -60,6 +73,7 @@ func NewService(cfg *config.ServerConfig, rt *manager.Runtime) *Service {
 		clientBuilder: clientbuild.NewBuilder(clientbuild.Options{
 			TemplateDir:      cfg.ClientTemplateDir,
 			ArtifactCacheDir: cfg.ClientArtifactCacheDir,
+			Version:          cfg.ClientLatestVersion,
 		}),
 	}
 }
@@ -77,6 +91,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/api/add_player", s.addPlayer)
 	mux.HandleFunc("/api/update_player", s.updatePlayer)
 	mux.HandleFunc("/api/generate_client", s.generateClient)
+	mux.HandleFunc("/api/upgrade_client", s.upgradeClient)
 	mux.HandleFunc("/api/tunnel_list", s.tunnelList)
 	mux.HandleFunc("/api/remove_tunnel", s.removeTunnel)
 	mux.HandleFunc("/api/add_tunnel", s.addTunnel)
@@ -328,14 +343,42 @@ func (s *Service) playerList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	players := make([]PlayerListItem, 0, len(users))
+	upgradeAvailability := make(map[string]bool)
 	for _, user := range users {
+		info := s.rt.Players.ClientInfo(user.ID)
+		comparison, comparable := upgrade.CompareVersions(info.Version, s.cfg.ClientLatestVersion)
+		snapshot := s.rt.Upgrades.Snapshot(user.ID)
+		_, supportedPlatform := clientbuild.LookupTarget(info.Platform)
+		online := s.rt.Players.IsOnline(user.ID)
+		upgradeActive := isUpgradeActive(snapshot.State)
+		unavailableReason := clientUpgradePreconditionReason(online, info.UpdaterVersion, supportedPlatform, comparable, comparison, upgradeActive)
+		if unavailableReason == "" {
+			artifactAvailable, checked := upgradeAvailability[info.Platform]
+			if !checked {
+				artifactAvailable = s.clientUpgradeAvailable(info.Platform)
+				upgradeAvailability[info.Platform] = artifactAvailable
+			}
+			if !artifactAvailable {
+				unavailableReason = upgradeReasonArtifactUnavailable
+			}
+		}
+		canUpgrade := unavailableReason == ""
 		players = append(players, PlayerListItem{
-			ID:             user.ID,
-			Remark:         user.Remark,
-			Key:            user.Key,
-			CreateTime:     user.CreateTime,
-			LastOnlineTime: user.LastOnlineTime,
-			Online:         s.rt.Players.IsOnline(user.ID),
+			ID:                       user.ID,
+			Remark:                   user.Remark,
+			Key:                      user.Key,
+			CreateTime:               user.CreateTime,
+			LastOnlineTime:           user.LastOnlineTime,
+			Online:                   online,
+			ClientVersion:            info.Version,
+			ClientPlatform:           info.Platform,
+			LatestVersion:            s.cfg.ClientLatestVersion,
+			IsLatest:                 comparable && comparison == 0,
+			CanUpgrade:               canUpgrade,
+			UpgradeUnavailableReason: unavailableReason,
+			UpgradeStatus:            snapshot.State,
+			UpgradeProgress:          snapshot.Progress,
+			UpgradeError:             snapshot.Error,
 		})
 	}
 	writeJSON(w, http.StatusOK, PlayerListResponse{
@@ -343,6 +386,125 @@ func (s *Service) playerList(w http.ResponseWriter, r *http.Request) {
 		CurPageNumber: req.PageNumber,
 		TotalCount:    total,
 	})
+}
+
+func clientUpgradePreconditionReason(online bool, updaterVersion uint32, supportedPlatform, comparable bool, comparison int, upgradeActive bool) string {
+	switch {
+	case !online:
+		return upgradeReasonOffline
+	case updaterVersion < upgrade.ProtocolVersion:
+		return upgradeReasonUpdaterUnsupported
+	case !supportedPlatform:
+		return upgradeReasonPlatformUnknown
+	case !comparable:
+		return upgradeReasonVersionInvalid
+	case comparison == 0:
+		return upgradeReasonAlreadyLatest
+	case comparison > 0:
+		return upgradeReasonClientNewer
+	case upgradeActive:
+		return upgradeReasonInProgress
+	default:
+		return ""
+	}
+}
+
+func (s *Service) clientUpgradeAvailable(platform string) bool {
+	builder, ok := s.clientBuilder.(clientbuild.UpgradeBuilder)
+	return ok && builder.CanUpgrade(platform)
+}
+
+func isUpgradeActive(state string) bool {
+	switch state {
+	case "offered", "accepted", "downloading", "verifying", "applying":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Service) upgradeClient(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAuth(w, r) {
+		return
+	}
+	var req UpgradeClientReq
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	player, err := s.rt.Users.FindByID(req.PlayerID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	if player == nil {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -2, Msg: "player not found"})
+		return
+	}
+	if !s.rt.Players.IsOnline(req.PlayerID) {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -3, Msg: "player is offline"})
+		return
+	}
+	info := s.rt.Players.ClientInfo(req.PlayerID)
+	if info.UpdaterVersion < upgrade.ProtocolVersion {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -4, Msg: "client does not support safe remote upgrade"})
+		return
+	}
+	if _, ok := clientbuild.LookupTarget(info.Platform); !ok {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -5, Msg: "unsupported or unknown client platform"})
+		return
+	}
+	comparison, comparable := upgrade.CompareVersions(info.Version, s.cfg.ClientLatestVersion)
+	if !comparable {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -6, Msg: "client or target version is invalid"})
+		return
+	}
+	if comparison == 0 {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -6, Msg: "client is already at the latest version"})
+		return
+	}
+	if comparison > 0 {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -6, Msg: "client version is newer than the configured target; remote downgrade is forbidden"})
+		return
+	}
+	if snapshot := s.rt.Upgrades.Snapshot(req.PlayerID); isUpgradeActive(snapshot.State) {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -8, Msg: "an upgrade is already in progress"})
+		return
+	}
+	if !s.clientUpgradeAvailable(info.Platform) {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -10, Msg: "no verified upgrade artifact matching the configured target version is available for this platform"})
+		return
+	}
+	settings, _, err := s.rt.ClientBuildSettings.GetForPlayer(req.PlayerID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, GeneralResponse{Code: -1, Msg: err.Error()})
+		return
+	}
+	artifact, err := s.clientBuilder.Build(r.Context(), *player, settings, info.Platform)
+	if err != nil {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -7, Msg: err.Error()})
+		return
+	}
+	if !artifact.UpgradeSafe {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -10, Msg: "client template has no verified manifest; rebuild release templates before remote upgrade"})
+		return
+	}
+	offer, err := s.rt.Upgrades.Start(req.PlayerID, artifact.Version, info.Platform, player.Key, artifact.Data)
+	if err != nil {
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -8, Msg: err.Error()})
+		return
+	}
+	session := s.rt.Players.Session(req.PlayerID)
+	if session == nil {
+		s.rt.Upgrades.Fail(req.PlayerID, offer.TaskID, errors.New("player disconnected"))
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -3, Msg: "player is offline"})
+		return
+	}
+	if err := session.SendPush(offer); err != nil {
+		s.rt.Upgrades.Fail(req.PlayerID, offer.TaskID, err)
+		writeJSON(w, http.StatusOK, GeneralResponse{Code: -9, Msg: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, GeneralResponse{Code: 0, Msg: "upgrade started"})
 }
 
 func (s *Service) removePlayer(w http.ResponseWriter, r *http.Request) {
@@ -362,6 +524,9 @@ func (s *Service) removePlayer(w http.ResponseWriter, r *http.Request) {
 	if err := s.rt.Players.Delete(req.ID); err != nil {
 		writeJSON(w, http.StatusOK, GeneralResponse{Code: -1, Msg: err.Error()})
 		return
+	}
+	if s.rt.Upgrades != nil {
+		s.rt.Upgrades.Remove(req.ID)
 	}
 	writeJSON(w, http.StatusOK, GeneralResponse{Code: 0, Msg: "Success"})
 }

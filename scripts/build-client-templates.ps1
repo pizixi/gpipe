@@ -1,9 +1,13 @@
 param(
-    [string]$OutputDir = ".\client-templates"
+    [string]$OutputDir = ".\client-templates",
+    [string]$Version = "1.0.0"
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if ($Version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+    throw "Version must be a semantic version, got: $Version"
+}
 $resolvedOutputDir = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
     [System.IO.Path]::GetFullPath($OutputDir)
 } else {
@@ -38,7 +42,7 @@ try {
     $placeholder = Get-EmbeddedConfigPlaceholder
     foreach ($target in $targets) {
         $outputPath = Join-Path $resolvedOutputDir $target.Output
-        $ldflags = "-s -w -X main.embeddedClientConfig=$placeholder"
+        $ldflags = "-s -w -X main.embeddedClientConfig=$placeholder -X main.clientVersion=$Version -X main.clientPlatform=$($target.Id)"
 
         Write-Host "Building client template $($target.Id) -> $outputPath"
         $env:CGO_ENABLED = "0"
@@ -61,5 +65,25 @@ try {
     if ($null -ne $oldCGO) { $env:CGO_ENABLED = $oldCGO } else { Remove-Item Env:\CGO_ENABLED -ErrorAction SilentlyContinue }
     Pop-Location
 }
+
+$artifacts = @()
+foreach ($target in $targets) {
+    $artifactPath = Join-Path $resolvedOutputDir $target.Output
+    $fileInfo = Get-Item -LiteralPath $artifactPath
+    $artifacts += [ordered]@{
+        target = $target.Id
+        file = $target.Output
+        size = $fileInfo.Length
+        sha256 = (Get-FileHash -LiteralPath $artifactPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
+$manifest = [ordered]@{
+    version = $Version
+    updater_protocol = 1
+    generated_at = [DateTime]::UtcNow.ToString("o")
+    artifacts = $artifacts
+}
+$manifestPath = Join-Path $resolvedOutputDir "manifest.json"
+[System.IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "Client templates are ready in $resolvedOutputDir"

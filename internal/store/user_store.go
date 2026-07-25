@@ -30,7 +30,7 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 	}
 
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time, last_online_time
+		SELECT id, username, password, create_time, last_online_time, client_version, client_platform, updater_version
 		FROM user
 		ORDER BY create_time DESC, id DESC
 		LIMIT ? OFFSET ?`, pageSize, pageNumber*pageSize)
@@ -52,7 +52,7 @@ func (s *UserStore) List(pageNumber, pageSize int) ([]model.User, int, error) {
 
 func (s *UserStore) FindByKey(key string) (*model.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time, last_online_time
+		SELECT id, username, password, create_time, last_online_time, client_version, client_platform, updater_version
 		FROM user
 		WHERE password = ?
 		ORDER BY id
@@ -91,7 +91,7 @@ func (s *UserStore) FindByKey(key string) (*model.User, error) {
 
 func (s *UserStore) FindByRemark(remark string) (*model.User, error) {
 	row := s.db.QueryRow(`
-		SELECT id, username, password, create_time, last_online_time
+		SELECT id, username, password, create_time, last_online_time, client_version, client_platform, updater_version
 		FROM user
 		WHERE username = ?`,
 		remark,
@@ -108,7 +108,7 @@ func (s *UserStore) FindByRemark(remark string) (*model.User, error) {
 
 func (s *UserStore) FindByID(id uint32) (*model.User, error) {
 	row := s.db.QueryRow(`
-		SELECT id, username, password, create_time, last_online_time
+		SELECT id, username, password, create_time, last_online_time, client_version, client_platform, updater_version
 		FROM user
 		WHERE id = ?`,
 		id,
@@ -125,7 +125,7 @@ func (s *UserStore) FindByID(id uint32) (*model.User, error) {
 
 func (s *UserStore) FindAll() ([]model.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, password, create_time, last_online_time
+		SELECT id, username, password, create_time, last_online_time, client_version, client_platform, updater_version
 		FROM user
 		ORDER BY create_time DESC, id DESC`)
 	if err != nil {
@@ -146,13 +146,16 @@ func (s *UserStore) FindAll() ([]model.User, error) {
 
 func (s *UserStore) Insert(user model.User) error {
 	_, err := s.db.Exec(`
-		INSERT INTO user(id, username, password, create_time, last_online_time)
-		VALUES(?, ?, ?, ?, ?)`,
+		INSERT INTO user(id, username, password, create_time, last_online_time, client_version, client_platform, updater_version)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID,
 		user.Remark,
 		user.Key,
 		user.CreateTime.UTC().Format(time.RFC3339Nano),
 		formatOptionalTime(user.LastOnlineTime),
+		user.ClientVersion,
+		user.ClientPlatform,
+		user.UpdaterVersion,
 	)
 	return err
 }
@@ -198,6 +201,24 @@ func (s *UserStore) UpdateLoginInfo(id uint32, at time.Time) error {
 	return nil
 }
 
+func (s *UserStore) UpdateClientInfo(id uint32, version, platform string, updaterVersion uint32) error {
+	result, err := s.db.Exec(`
+		UPDATE user
+		SET client_version = ?, client_platform = ?, updater_version = ?
+		WHERE id = ?`, version, platform, updaterVersion, id)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return fmt.Errorf("update player client info: rows_affected = %d", rows)
+	}
+	return nil
+}
+
 func (s *UserStore) Delete(id uint32) error {
 	result, err := s.db.Exec(`DELETE FROM user WHERE id = ?`, id)
 	if err != nil {
@@ -229,6 +250,9 @@ func scanUser(scanner userScanner) (model.User, error) {
 		&user.Key,
 		&createTime,
 		&lastOnlineTime,
+		&user.ClientVersion,
+		&user.ClientPlatform,
+		&user.UpdaterVersion,
 	); err != nil {
 		return model.User{}, err
 	}

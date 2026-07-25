@@ -24,6 +24,17 @@ type PlayerListItem struct {
 	CreateTime     time.Time  `json:"create_time"`
 	LastOnlineTime *time.Time `json:"last_online_time"`
 	Online         bool       `json:"online"`
+	ClientVersion  string     `json:"client_version"`
+	ClientPlatform string     `json:"client_platform"`
+	LatestVersion  string     `json:"latest_version"`
+	IsLatest       bool       `json:"is_latest"`
+	CanUpgrade     bool       `json:"can_upgrade"`
+	// UpgradeUnavailableReason is a stable machine-readable reason used by the
+	// UI when remote upgrade is disabled. It is empty when CanUpgrade is true.
+	UpgradeUnavailableReason string `json:"upgrade_unavailable_reason"`
+	UpgradeStatus            string `json:"upgrade_status"`
+	UpgradeProgress          int    `json:"upgrade_progress"`
+	UpgradeError             string `json:"upgrade_error"`
 }
 
 type PlayerListResponse struct {
@@ -64,6 +75,10 @@ type GenerateClientReq struct {
 	PlayerID uint32                      `json:"player_id"`
 	Target   string                      `json:"target"`
 	Settings *ClientBuildSettingsPayload `json:"settings,omitempty"`
+}
+
+type UpgradeClientReq struct {
+	PlayerID uint32 `json:"player_id"`
 }
 
 type PlayerRemoveReq struct {

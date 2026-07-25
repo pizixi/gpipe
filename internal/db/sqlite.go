@@ -52,7 +52,10 @@ func migrate(db *sql.DB) error {
 			username TEXT NOT NULL UNIQUE,
 			password TEXT NOT NULL,
 			create_time TEXT NOT NULL,
-			last_online_time TEXT NOT NULL DEFAULT ''
+			last_online_time TEXT NOT NULL DEFAULT '',
+			client_version TEXT NOT NULL DEFAULT '',
+			client_platform TEXT NOT NULL DEFAULT '',
+			updater_version INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS tunnel (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,6 +102,15 @@ func migrate(db *sql.DB) error {
 		}
 	}
 	if err := ensureColumn(db, "user", "last_online_time", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "user", "client_version", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "user", "client_platform", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "user", "updater_version", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	return nil

@@ -14,6 +14,9 @@ const (
 	MsgServerClientManagementLoginAck  uint32 = 1006
 	MsgServerClientModifyTunnelNtf     uint32 = 1008
 	MsgClientServerTunnelRuntimeReport uint32 = 1009
+	MsgServerClientUpgradeOfferNtf     uint32 = 1010
+	MsgClientServerUpgradeStatusReport uint32 = 1011
+	MsgServerClientUpgradeChunkNtf     uint32 = 1012
 	MsgGenericSuccess                  uint32 = 150001
 	MsgGenericFail                     uint32 = 150002
 	MsgGenericError                    uint32 = 150003
@@ -43,12 +46,18 @@ func MessageID(message Message) (uint32, bool) {
 		return MsgClientServerManagementLoginReq, true
 	case *pb.TunnelRuntimeReport:
 		return MsgClientServerTunnelRuntimeReport, true
+	case *pb.UpgradeStatusReport:
+		return MsgClientServerUpgradeStatusReport, true
 	case *pb.LoginAck:
 		return MsgServerClientLoginAck, true
 	case *pb.ManagementLoginAck:
 		return MsgServerClientManagementLoginAck, true
 	case *pb.ModifyTunnelNtf:
 		return MsgServerClientModifyTunnelNtf, true
+	case *pb.UpgradeOffer:
+		return MsgServerClientUpgradeOfferNtf, true
+	case *pb.UpgradeChunk:
+		return MsgServerClientUpgradeChunkNtf, true
 	case *pb.Success:
 		return MsgGenericSuccess, true
 	case *pb.Fail:
@@ -94,12 +103,18 @@ func Encode(message Message) ([]byte, error) {
 		return marshalManagementLoginReq(m), nil
 	case *pb.TunnelRuntimeReport:
 		return marshalTunnelRuntimeReport(m), nil
+	case *pb.UpgradeStatusReport:
+		return marshalUpgradeStatusReport(m), nil
 	case *pb.LoginAck:
 		return marshalLoginAck(m)
 	case *pb.ManagementLoginAck:
 		return marshalManagementLoginAck(m), nil
 	case *pb.ModifyTunnelNtf:
 		return marshalModifyTunnelNtf(m)
+	case *pb.UpgradeOffer:
+		return marshalUpgradeOffer(m), nil
+	case *pb.UpgradeChunk:
+		return marshalUpgradeChunk(m), nil
 	case *pb.Success:
 		return nil, nil
 	case *pb.Fail:
@@ -145,12 +160,18 @@ func Decode(msgID uint32, payload []byte) (Message, error) {
 		return unmarshalManagementLoginReq(payload)
 	case MsgClientServerTunnelRuntimeReport:
 		return unmarshalTunnelRuntimeReport(payload)
+	case MsgClientServerUpgradeStatusReport:
+		return unmarshalUpgradeStatusReport(payload)
 	case MsgServerClientLoginAck:
 		return unmarshalLoginAck(payload)
 	case MsgServerClientManagementLoginAck:
 		return unmarshalManagementLoginAck(payload)
 	case MsgServerClientModifyTunnelNtf:
 		return unmarshalModifyTunnelNtf(payload)
+	case MsgServerClientUpgradeOfferNtf:
+		return unmarshalUpgradeOffer(payload)
+	case MsgServerClientUpgradeChunkNtf:
+		return unmarshalUpgradeChunk(payload)
 	case MsgGenericSuccess:
 		return &pb.Success{}, nil
 	case MsgGenericFail:

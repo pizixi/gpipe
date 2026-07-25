@@ -11,6 +11,7 @@
   "web_password": "admin@1234",
   "client_template_dir": "./client-templates",
   "client_artifact_cache_dir": "./client-cache",
+  "client_latest_version": "1.0.0",
   "quiet": false,
   "log_dir": "logs"
 }
