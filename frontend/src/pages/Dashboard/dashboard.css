@@ -176,6 +176,17 @@
   text-overflow: clip;
 }
 
+.dashboard-data-table.player-data-table--auto-width .ant-table-thead > tr > th,
+.dashboard-data-table.player-data-table--auto-width .ant-table-tbody > tr > td {
+  white-space: nowrap;
+}
+
+.dashboard-data-table.player-data-table--auto-width .client-version-badge {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .dashboard-data-table .table-chip {
   display: inline-flex;
   align-items: center;

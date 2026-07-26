@@ -152,7 +152,6 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       title: t('id'),
       dataIndex: 'id',
       sorter: (a, b) => a.id - b.id,
-      width: 112,
       render: (value: number) => (
         <span style={{ fontFamily: 'monospace', fontSize: 14, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
           {value}
@@ -162,13 +161,11 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
     {
       title: t('player_key'),
       dataIndex: 'key',
-      ellipsis: true,
       render: (value: string) => <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{value}</span>,
     },
     {
       title: t('client_version'),
       dataIndex: 'client_version',
-      width: 224,
       sorter: (a, b) => (a.client_version || '').localeCompare(b.client_version || ''),
       render: (value: string, record) => {
         if (!value) {
@@ -221,7 +218,6 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       dataIndex: 'create_time',
       sorter: (a, b) => new Date(a.create_time).getTime() - new Date(b.create_time).getTime(),
       render: (value: string) => formatDateTime(value),
-      width: 180,
     },
     {
       title: t('last_online_time'),
@@ -231,13 +227,11 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
         const text = formatDateTime(value);
         return text || <span className="player-meta-empty">-</span>;
       },
-      width: 180,
     },
     {
       title: t('player_remark'),
       dataIndex: 'remark',
       sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? '', 'zh-CN'),
-      ellipsis: true,
       render: (value: string, record) => {
         if (!value) {
           return <span className="player-remark player-remark--empty">{t('not_set')}</span>;
@@ -253,7 +247,6 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       title: t('online_status'),
       dataIndex: 'online',
       sorter: (a, b) => Number(a.online) - Number(b.online),
-      width: 132,
       align: 'center' as const,
       render: (online: boolean) => (
         <StatusPill variant={online ? 'online' : 'offline'} label={t(online ? 'online' : 'offline')} />
@@ -261,7 +254,6 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
     },
     {
       title: t('actions'),
-      width: 246,
       render: (_, record) => (
         <div className="table-action-group">
           <Tooltip title={t('view_player_tunnels')}>
@@ -325,16 +317,16 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
       </div>
       <div ref={tableRegionRef} className="dashboard-table-region">
         <Table<PlayerListItem>
-          className="dashboard-data-table"
+          className="dashboard-data-table player-data-table--auto-width"
           columns={columns}
           dataSource={sortedPlayers}
           rowKey="id"
           size="middle"
           pagination={false}
-          scroll={{ x: 1450, y: tableScrollY }}
+          scroll={{ x: 'max-content', y: tableScrollY }}
           locale={{ emptyText: t('empty_players') }}
           bordered
-          tableLayout="fixed"
+          tableLayout="auto"
           style={{ borderRadius: 8, overflow: 'hidden' }}
         />
       </div>
