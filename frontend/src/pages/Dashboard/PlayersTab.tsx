@@ -176,13 +176,15 @@ const PlayersTab: React.FC<Props> = ({ onOpenPlayerTunnels }) => {
         const reasonKey = record.upgrade_unavailable_reason
           ? `upgrade_reason_${record.upgrade_unavailable_reason}`
           : 'upgrade_unavailable';
-        const badgeState = active
-          ? 'active'
-          : record.can_upgrade
-            ? 'upgrade'
-            : record.is_latest
-              ? 'latest'
-              : 'unavailable';
+        const badgeState = !record.online
+          ? 'offline'
+          : active
+            ? 'active'
+            : record.can_upgrade
+              ? 'upgrade'
+              : record.is_latest
+                ? 'latest'
+                : 'unavailable';
         const tooltip = (
           <div className="client-version-tooltip">
             <div><span>{t('current_client_version')}</span><strong>v{value}</strong></div>

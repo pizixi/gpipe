@@ -322,7 +322,8 @@
 }
 
 .dashboard-data-table .client-version-badge--unavailable,
-.dashboard-data-table .client-version-badge--unknown {
+.dashboard-data-table .client-version-badge--unknown,
+.dashboard-data-table .client-version-badge--offline {
   border-color: #d8e1ea;
   background: linear-gradient(135deg, #ffffff, #f1f5f9);
   color: #64748b;
