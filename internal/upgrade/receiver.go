@@ -9,7 +9,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -272,10 +271,10 @@ func (r *Receiver) StartApply() error {
 		return err
 	}
 	// The verified candidate runs the helper so the old executable never has
-	// to replace itself while it is still mapped (which Windows forbids).
-	cmd := exec.Command(r.candidate, "apply-update", "--state", statePath)
-	prepareDetachedCommand(cmd)
-	if err := cmd.Start(); err != nil {
+	// to replace itself while it is still mapped (which Windows forbids). Linux
+	// service mode launches it in a separate transient systemd unit so stopping
+	// the old service cannot kill the helper through the service cgroup.
+	if err := startApplyHelper(r.candidate, statePath, r.opts.Mode, r.offer.TaskID); err != nil {
 		return fmt.Errorf("start upgrade helper: %w", err)
 	}
 	return ErrApplyStarted

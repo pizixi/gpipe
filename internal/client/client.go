@@ -28,6 +28,7 @@ import (
 
 var tlsHandshakeTimeout = 15 * time.Second
 var connectTimeout = 10 * time.Second
+var clientSessionWriteTimeout = 15 * time.Second
 
 const readCacheCompactThreshold = 256 * 1024
 
@@ -535,6 +536,9 @@ func (s *clientSession) send(serial int32, message any) error {
 	defer s.writeMu.Unlock()
 	if s.conn == nil {
 		return net.ErrClosed
+	}
+	if err := s.conn.SetWriteDeadline(time.Now().Add(clientSessionWriteTimeout)); err != nil {
+		return err
 	}
 	return writeAll(s.conn, packet)
 }

@@ -114,6 +114,18 @@ function Invoke-FrontendBuild([string]$FrontendDir) {
         if ($LASTEXITCODE -ne 0) {
             throw "npm run build failed"
         }
+
+        $indexPath = Join-Path $FrontendDir "dist\index.html"
+        if (-not (Test-Path -LiteralPath $indexPath)) {
+            throw "frontend build did not produce dist/index.html"
+        }
+        $indexHTML = Get-Content -LiteralPath $indexPath -Raw
+        if ($indexHTML -match '(?:src|href)="\./assets/') {
+            throw "frontend assets are relative to the current route; nested pages such as /remote/:id would fail to load"
+        }
+        if ($indexHTML -notmatch '(?:src|href)="/assets/') {
+            throw "frontend build did not produce root-relative /assets paths"
+        }
     } finally {
         Pop-Location
     }
@@ -142,6 +154,12 @@ $cacheDir = Join-Path $resolvedOutputDir "client-cache"
 $logsDir = Join-Path $resolvedOutputDir "logs"
 $certsDir = Join-Path $resolvedOutputDir "certs"
 
+# Generated player-specific clients embed the selected template. Reusing this
+# cache after rebuilding the templates can silently serve an older binary,
+# especially during local testing with the same version number.
+if (Test-Path -LiteralPath $cacheDir) {
+    Remove-Item -LiteralPath $cacheDir -Recurse -Force
+}
 New-Item -ItemType Directory -Force -Path $binDir, $templateDir, $cacheDir, $logsDir | Out-Null
 
 $targetGoOS = if ([string]::IsNullOrWhiteSpace($ServerGOOS)) { Get-GoEnvValue "GOHOSTOS" } else { $ServerGOOS.Trim() }

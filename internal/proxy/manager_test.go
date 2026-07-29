@@ -447,7 +447,7 @@ func TestUDPInletRecreatesSessionAfterIdleCleanup(t *testing.T) {
 		logger,
 		1,
 		TunnelModeUDP,
-		"127.0.0.1:"+freeTCPPort(t),
+		"127.0.0.1:"+freeTCPUDPPort(t),
 		"127.0.0.1:9",
 		NewSessionCommonInfo(false, ParseEncryptionMethod("None"), nil),
 		InletAuthData{},

@@ -3,6 +3,7 @@
 package upgrade
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"syscall"
@@ -18,6 +19,14 @@ const serviceTransitionTimeout = 45 * time.Second
 func prepareDetachedCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS}
 }
+
+func startApplyHelper(candidate, statePath, _, _ string) error {
+	cmd := exec.Command(candidate, "apply-update", "--state", statePath)
+	prepareDetachedCommand(cmd)
+	return cmd.Start()
+}
+
+func ensureApplyHelperIsolation(_ string, _ ApplyState) (bool, error) { return false, nil }
 
 func waitForProcessExit(pid int, timeout time.Duration) error {
 	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
@@ -131,5 +140,30 @@ func atomicReplace(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	return windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	flags := uint32(windows.MOVEFILE_REPLACE_EXISTING | windows.MOVEFILE_WRITE_THROUGH)
+	if err := windows.MoveFileEx(from, to, flags); err == nil {
+		return nil
+	} else if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+		return err
+	}
+
+	// MoveFileEx reports ERROR_ACCESS_DENIED when the destination has the
+	// read-only DOS attribute. Downloading and staging the candidate still
+	// succeeds in that case, so the old implementation failed only at the final
+	// activation step. Clear just that attribute and retry; preserve all other
+	// attributes and restore them if replacement is still blocked by ACLs or a
+	// process holding the executable open.
+	attributes, attributeErr := windows.GetFileAttributes(to)
+	if attributeErr != nil || attributes == windows.INVALID_FILE_ATTRIBUTES || attributes&windows.FILE_ATTRIBUTE_READONLY == 0 {
+		return windows.ERROR_ACCESS_DENIED
+	}
+	writableAttributes := attributes &^ uint32(windows.FILE_ATTRIBUTE_READONLY)
+	if err := windows.SetFileAttributes(to, writableAttributes); err != nil {
+		return fmt.Errorf("clear read-only attribute on %q: %w", destination, err)
+	}
+	if err := windows.MoveFileEx(from, to, flags); err != nil {
+		_ = windows.SetFileAttributes(to, attributes)
+		return err
+	}
+	return nil
 }

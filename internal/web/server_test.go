@@ -172,10 +172,10 @@ func TestHandlerServesEmbeddedIndexWhenWebBaseDirIsEmpty(t *testing.T) {
 	}
 }
 
-func TestHandlerServesEmbeddedAssetsWhenWebBaseDirIsEmpty(t *testing.T) {
+func TestHandlerServesEmbeddedAssetsFromNestedRoute(t *testing.T) {
 	handler := NewService(&config.ServerConfig{}, nil).Handler()
 
-	indexReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexReq := httptest.NewRequest(http.MethodGet, "/remote/123", nil)
 	indexRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(indexRecorder, indexReq)
 
@@ -183,12 +183,12 @@ func TestHandlerServesEmbeddedAssetsWhenWebBaseDirIsEmpty(t *testing.T) {
 		t.Fatalf("index status = %d, want %d", indexRecorder.Code, http.StatusOK)
 	}
 
-	matches := regexp.MustCompile(`(?:src|href)="\./(assets/[^"]+\.js)"`).FindStringSubmatch(indexRecorder.Body.String())
+	matches := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+\.js)"`).FindStringSubmatch(indexRecorder.Body.String())
 	if len(matches) != 2 {
 		t.Fatalf("expected embedded asset path in index html")
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/"+matches[1], nil)
+	req := httptest.NewRequest(http.MethodGet, matches[1], nil)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 

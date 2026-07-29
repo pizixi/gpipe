@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	targetActivationTimeout = 45 * time.Second
+	targetRollbackTimeout   = 45 * time.Second
+)
+
 func RunApplyHelper(statePath string) error {
 	var state ApplyState
 	if err := readJSON(statePath, &state); err != nil {
@@ -18,6 +23,17 @@ func RunApplyHelper(statePath string) error {
 	}
 	if state.Target == "" || state.Candidate == "" || state.Backup == "" || state.ParentPID <= 0 {
 		return errors.New("invalid update state")
+	}
+	// A helper started by a legacy systemd service is still inside that
+	// service's cgroup. Hand it off before hashing the (potentially large)
+	// candidate: the old service exits immediately after spawning us and
+	// KillMode=control-group would otherwise win this race and kill the helper.
+	handedOff, err := ensureApplyHelperIsolation(statePath, state)
+	if err != nil {
+		return recoverBeforeSwitch(statePath, state, fmt.Errorf("isolate upgrade helper from old service: %w", err))
+	}
+	if handedOff {
+		return nil
 	}
 	if digest, err := fileSHA256(state.Candidate); err != nil || !strings.EqualFold(digest, state.ExpectedSHA256) {
 		if err != nil {
@@ -115,14 +131,14 @@ func replaceTarget(state ApplyState) error {
 	if err := copyFileSync(state.Candidate, installing, 0o700); err != nil {
 		return fmt.Errorf("stage new client: %w", err)
 	}
-	if err := retryRename(installing, state.Target, 15*time.Second); err != nil {
+	if err := retryRenameForState(installing, state.Target, targetActivationTimeout, state); err != nil {
 		_ = os.Remove(installing)
 		return fmt.Errorf("activate new client: %w", err)
 	}
 	if err := syncDirectory(filepath.Dir(state.Target)); err != nil {
 		failed := state.Target + ".failed-" + state.TaskID
 		_ = copyFileSync(state.Target, failed, 0o700)
-		_ = retryRename(state.Backup, state.Target, 15*time.Second)
+		_ = retryRenameForState(state.Backup, state.Target, targetRollbackTimeout, state)
 		_ = syncDirectory(filepath.Dir(state.Target))
 		return fmt.Errorf("persist new client: %w", err)
 	}
@@ -141,7 +157,7 @@ func rollbackTarget(state ApplyState, process *os.Process) error {
 	}
 	failed := state.Target + ".failed-" + state.TaskID
 	_ = copyFileSync(state.Target, failed, 0o700)
-	if err := retryRename(state.Backup, state.Target, 30*time.Second); err != nil {
+	if err := retryRenameForState(state.Backup, state.Target, targetRollbackTimeout, state); err != nil {
 		return err
 	}
 	if state.Mode == "service" {
@@ -188,9 +204,37 @@ func copyFileSync(source, destination string, mode os.FileMode) error {
 }
 
 func retryRename(source, destination string, timeout time.Duration) error {
+	return retryRenameWithHook(source, destination, timeout, nil)
+}
+
+func retryRenameForState(source, destination string, timeout time.Duration, state ApplyState) error {
+	if state.Mode != "service" {
+		return retryRename(source, destination, timeout)
+	}
+	return retryRenameWithHook(source, destination, timeout, func() error {
+		// A service recovery policy can restart the old executable after the
+		// initial stop and race the file switch. Reassert Stopped immediately
+		// before every replacement attempt.
+		return stopService(state.ServiceName)
+	})
+}
+
+func retryRenameWithHook(source, destination string, timeout time.Duration, beforeAttempt func() error) error {
 	deadline := time.Now().Add(timeout)
 	var lastErr error
+	var hookErr error
+	attempts := 0
 	for time.Now().Before(deadline) {
+		attempts++
+		if beforeAttempt != nil {
+			hookErr = beforeAttempt()
+			if hookErr != nil {
+				// 无法确认服务已经停止时，绝不能在 Linux 上依赖 rename 的成功结果：
+				// 正在运行的旧进程不会阻止替换路径，可能导致旧版本被误判为新版本健康。
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
+		}
 		if err := atomicReplace(source, destination); err == nil {
 			return nil
 		} else {
@@ -198,7 +242,16 @@ func retryRename(source, destination string, timeout time.Duration) error {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	return lastErr
+	if lastErr == nil {
+		if hookErr != nil {
+			return fmt.Errorf("prepare replacement of %q with %q after %d attempts: %w", destination, source, attempts, hookErr)
+		}
+		lastErr = errors.New("replacement timed out before the first replacement attempt")
+	}
+	if hookErr != nil {
+		return fmt.Errorf("replace %q with %q after %d attempts: %w; last service stop retry: %v", destination, source, attempts, lastErr, hookErr)
+	}
+	return fmt.Errorf("replace %q with %q after %d attempts: %w", destination, source, attempts, lastErr)
 }
 
 func waitForFile(path string, timeout time.Duration) bool {

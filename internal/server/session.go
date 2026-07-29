@@ -349,6 +349,10 @@ func (s *Session) handlePush(message proto.Message) error {
 	if !ok {
 		return nil
 	}
+	if fromPlayer != s.playerID {
+		s.logger.Printf("session %d rejected tunnel %d message from player %d; expected player %d", s.id, tunnelID, s.playerID, fromPlayer)
+		return nil
+	}
 	target := s.hub.sessionFor(toPlayer)
 	if target == nil {
 		if toPlayer == 0 && s.hub.proxyMgr != nil {
@@ -434,7 +438,7 @@ func (s *Session) resolveRoute(message proto.Message) (uint32, uint32, uint32, b
 		return 0, 0, 0, false
 	}
 	tunnel, ok := s.hub.runtime.Tunnel.Get(tunnelID)
-	if !ok {
+	if !ok || !tunnel.Enabled {
 		return 0, 0, 0, false
 	}
 	if isI2O {

@@ -69,10 +69,13 @@ func (c *HTTPContext) OnPeerData(data *ContextData, payload []byte) error {
 		if headerEnd < 0 {
 			return nil
 		}
-		req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(c.cache)))
+		header := append([]byte(nil), c.cache[:headerEnd+4]...)
+		initialPayload := append([]byte(nil), c.cache[headerEnd+4:]...)
+		req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(header)))
 		if err != nil {
-			return nil
+			return fmt.Errorf("parse http proxy request: %w", err)
 		}
+		defer req.Body.Close()
 		if !c.authorized(req) {
 			c.status.Store(int32(httpStatusInvalid))
 			_ = c.writer.Write([]byte(proxyAuthRequiredResponse), nil)
@@ -88,23 +91,15 @@ func (c *HTTPContext) OnPeerData(data *ContextData, payload []byte) error {
 		if req.Method == http.MethodConnect {
 			c.isConnectMethod = true
 			c.cache = []byte("HTTP/1.1 200 Connection Established\r\nProxy-Agent: npipe/HTTP/1.1\r\n\r\n")
-		} else {
-			req.RequestURI = ""
-			req.URL.Scheme = ""
-			req.URL.Host = ""
-			req.Header.Del("Proxy-Connection")
-			req.Header.Del("Proxy-Authorization")
-			req.Header.Del("Forwarded")
-			req.Header.Del("X-Forwarded-For")
-			req.Header.Del("X-Forwarded-Host")
-			req.Header.Del("X-Forwarded-Proto")
-			req.Header.Del("Via")
-
-			var out bytes.Buffer
-			if err := req.Write(&out); err != nil {
+			if err := c.bufferPendingPayload(initialPayload); err != nil {
 				return err
 			}
-			c.cache = out.Bytes()
+		} else {
+			rewrittenHeader, err := rewriteProxyRequestHeader(req)
+			if err != nil {
+				return err
+			}
+			c.cache = append(rewrittenHeader, initialPayload...)
 		}
 		if len(c.cache) > httpMaxBufferedPayloadBytes {
 			return fmt.Errorf("http proxy initial payload too large")
@@ -127,6 +122,54 @@ func (c *HTTPContext) OnPeerData(data *ContextData, payload []byte) error {
 		return c.sendUpstreamPayload(payload)
 	}
 	return nil
+}
+
+func rewriteProxyRequestHeader(req *http.Request) ([]byte, error) {
+	if req == nil || req.URL == nil {
+		return nil, fmt.Errorf("invalid http proxy request")
+	}
+	requestURI := req.URL.RequestURI()
+	if requestURI == "" {
+		requestURI = "/"
+	}
+
+	header := req.Header.Clone()
+	for _, name := range []string{
+		"Proxy-Connection",
+		"Proxy-Authorization",
+		"Forwarded",
+		"X-Forwarded-For",
+		"X-Forwarded-Host",
+		"X-Forwarded-Proto",
+		"Via",
+		"Content-Length",
+		"Transfer-Encoding",
+	} {
+		header.Del(name)
+	}
+
+	var out bytes.Buffer
+	if _, err := fmt.Fprintf(&out, "%s %s %s\r\n", req.Method, requestURI, req.Proto); err != nil {
+		return nil, err
+	}
+	if _, err := fmt.Fprintf(&out, "Host: %s\r\n", req.Host); err != nil {
+		return nil, err
+	}
+	if req.ContentLength > 0 {
+		if _, err := fmt.Fprintf(&out, "Content-Length: %d\r\n", req.ContentLength); err != nil {
+			return nil, err
+		}
+	}
+	if len(req.TransferEncoding) > 0 {
+		if _, err := fmt.Fprintf(&out, "Transfer-Encoding: %s\r\n", strings.Join(req.TransferEncoding, ", ")); err != nil {
+			return nil, err
+		}
+	}
+	if err := header.Write(&out); err != nil {
+		return nil, err
+	}
+	out.WriteString("\r\n")
+	return out.Bytes(), nil
 }
 
 func (c *HTTPContext) OnProxyMessage(message ProxyMessage) error {

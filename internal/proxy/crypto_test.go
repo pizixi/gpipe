@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/pierrec/lz4/v4"
@@ -95,6 +97,43 @@ func TestCompressedTCPReadChunkRoundTripWithEncryption(t *testing.T) {
 	}
 }
 
+func TestSessionCommonAES128ConcurrentRoundTrip(t *testing.T) {
+	common := NewSessionCommonInfo(false, EncryptionAES128, []byte("concurrent-test-key"))
+	defer common.Close()
+	input := deterministicHighEntropyPayload(4096)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for worker := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for iteration := range 100 {
+				encoded, err := common.EncodeDataAndLimit(input)
+				if err != nil {
+					errs <- fmt.Errorf("worker %d iteration %d encode: %w", worker, iteration, err)
+					return
+				}
+				common.Flow.Release(len(encoded))
+				decoded, err := common.DecodeData(encoded)
+				if err != nil {
+					errs <- fmt.Errorf("worker %d iteration %d decode: %w", worker, iteration, err)
+					return
+				}
+				if !bytes.Equal(decoded, input) {
+					errs <- fmt.Errorf("worker %d iteration %d decoded payload mismatch", worker, iteration)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}
+
 func TestCompressDataEmptyPayload(t *testing.T) {
 	encoded, err := CompressData(nil)
 	if err != nil {
@@ -120,4 +159,52 @@ func deterministicHighEntropyPayload(size int) []byte {
 		counter++
 	}
 	return out
+}
+
+func BenchmarkCompressData(b *testing.B) {
+	for _, tc := range []struct {
+		name  string
+		input []byte
+	}{
+		{name: "1KiB_Repeated", input: bytes.Repeat([]byte("gpipe"), 1024/5+1)[:1024]},
+		{name: "1KiB_HighEntropy", input: deterministicHighEntropyPayload(1024)},
+		{name: "64KiB_Repeated", input: bytes.Repeat([]byte("gpipe"), 65535/5)},
+		{name: "64KiB_HighEntropy", input: deterministicHighEntropyPayload(65535)},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.SetBytes(int64(len(tc.input)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := CompressData(tc.input); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkSessionCommonAES128RoundTrip(b *testing.B) {
+	for _, size := range []int{1024, 65535} {
+		input := deterministicHighEntropyPayload(size)
+		b.Run(fmt.Sprintf("%dB", size), func(b *testing.B) {
+			common := NewSessionCommonInfo(false, EncryptionAES128, []byte("benchmark-key"))
+			defer common.Close()
+			b.SetBytes(int64(size))
+			b.ReportAllocs()
+			for b.Loop() {
+				encoded, err := common.EncodeDataAndLimit(input)
+				if err != nil {
+					b.Fatal(err)
+				}
+				common.Flow.Release(len(encoded))
+				decoded, err := common.DecodeData(encoded)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if len(decoded) != len(input) {
+					b.Fatalf("decoded length = %d, want %d", len(decoded), len(input))
+				}
+			}
+		})
+	}
 }

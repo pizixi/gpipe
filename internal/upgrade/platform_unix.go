@@ -6,12 +6,71 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 )
 
 func prepareDetachedCommand(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }
+
+const applyHelperTransientEnv = "GPIPE_UPDATE_TRANSIENT"
+
+var runSystemdTransient = func(args ...string) ([]byte, error) {
+	return exec.Command("systemd-run", args...).CombinedOutput()
+}
+
+func startApplyHelper(candidate, statePath, mode, taskID string) error {
+	if runtime.GOOS == "linux" && mode == "service" {
+		return startTransientApplyHelper(candidate, statePath, taskID)
+	}
+
+	cmd := exec.Command(candidate, "apply-update", "--state", statePath)
+	prepareDetachedCommand(cmd)
+	return cmd.Start()
+}
+
+func ensureApplyHelperIsolation(statePath string, state ApplyState) (bool, error) {
+	if runtime.GOOS != "linux" || state.Mode != "service" || os.Getenv(applyHelperTransientEnv) == "1" {
+		return false, nil
+	}
+	candidate, err := os.Executable()
+	if err != nil {
+		return false, err
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(candidate); resolveErr == nil {
+		candidate = resolved
+	}
+	if err := startTransientApplyHelper(candidate, statePath, state.TaskID); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func startTransientApplyHelper(candidate, statePath, taskID string) error {
+	unitName := "gpipe-client-update-" + taskID
+	output, err := runSystemdTransient(
+		"--quiet",
+		"--collect",
+		"--unit="+unitName,
+		"--property=Type=exec",
+		"--setenv="+applyHelperTransientEnv+"=1",
+		"--",
+		candidate,
+		"apply-update",
+		"--state",
+		statePath,
+	)
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("start transient systemd upgrade unit %q: %s", unitName, message)
+	}
+	return nil
+}
 
 func waitForProcessExit(pid int, timeout time.Duration) error {
 	process, err := os.FindProcess(pid)

@@ -17,6 +17,7 @@ import (
 
 const upgradeChunkSize = 128 * 1024
 const upgradeTaskTTL = 45 * time.Minute
+const upgradeApplyTTL = 5 * time.Minute
 const maxUpgradeArtifactSize = 256 * 1024 * 1024
 
 type UpgradeSnapshot struct {
@@ -113,11 +114,20 @@ func (m *UpgradeManager) HandleStatus(playerID uint32, report *pb.UpgradeStatusR
 		}
 		return nil, nil
 	}
-	task.updated = now
+	previousState, previousOffset, previousError := task.state, task.offset, task.err
 	task.state = report.State
 	task.err = report.Error
 	if report.Offset >= 0 && report.Offset <= task.offer.Size {
 		task.offset = report.Offset
+	}
+	// Reconnecting clients may replay the last status. In particular, a legacy
+	// systemd client whose helper is killed with the old service can reconnect
+	// and report "applying" forever. A duplicate must not renew the apply TTL,
+	// otherwise the server keeps offering the task and forces an endless
+	// clean-exit/restart loop. Genuine state, progress, or error changes still
+	// extend the task lifetime.
+	if task.state != previousState || task.offset != previousOffset || task.err != previousError {
+		task.updated = now
 	}
 	if report.State == "failed" || report.State == "rolled_back" {
 		m.removeArtifactLocked(task)
@@ -204,7 +214,11 @@ func (m *UpgradeManager) Remove(playerID uint32) {
 
 func (m *UpgradeManager) pruneExpiredLocked(now time.Time) {
 	for playerID, task := range m.tasks {
-		if now.Sub(task.updated) < upgradeTaskTTL {
+		ttl := upgradeTaskTTL
+		if task.state == "applying" {
+			ttl = upgradeApplyTTL
+		}
+		if now.Sub(task.updated) < ttl {
 			continue
 		}
 		if terminalUpgradeState(task.state) {
@@ -212,8 +226,13 @@ func (m *UpgradeManager) pruneExpiredLocked(now time.Time) {
 			delete(m.tasks, playerID)
 			continue
 		}
+		wasApplying := task.state == "applying"
 		task.state = "failed"
-		task.err = "upgrade task expired"
+		if wasApplying {
+			task.err = "upgrade apply timed out waiting for the client to restart"
+		} else {
+			task.err = "upgrade task expired"
+		}
 		task.updated = now
 		m.removeArtifactLocked(task)
 	}

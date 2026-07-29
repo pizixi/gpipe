@@ -100,6 +100,50 @@ func TestShadowsocksPacketRoundTrip(t *testing.T) {
 	}
 }
 
+func TestShadowsocksPendingPayloadsAreBounded(t *testing.T) {
+	t.Run("tcp", func(t *testing.T) {
+		ctx := NewShadowsocksTCPContext()
+		ctx.status.Store(int32(shadowsocksTCPStatusConnecting))
+		payloadSize := shadowsocksMaxPendingBytes - shadowsocksTCPPendingItemOverheadBytes
+		if err := ctx.bufferPendingPayload(make([]byte, payloadSize)); err != nil {
+			t.Fatalf("buffer payload at limit: %v", err)
+		}
+		if err := ctx.bufferPendingPayload([]byte{1}); err == nil {
+			t.Fatal("expected tcp pending payload limit error")
+		}
+		if ctx.pendingBytes != shadowsocksMaxPendingBytes {
+			t.Fatalf("pending bytes = %d, want %d", ctx.pendingBytes, shadowsocksMaxPendingBytes)
+		}
+	})
+
+	t.Run("udp", func(t *testing.T) {
+		ctx := NewShadowsocksUDPContext()
+		target := "127.0.0.1:53"
+		payloadSize := shadowsocksMaxPendingBytes - shadowsocksUDPPendingItemOverheadBytes - len(target)
+		if err := ctx.bufferPendingPacket(target, make([]byte, payloadSize)); err != nil {
+			t.Fatalf("buffer packet at limit: %v", err)
+		}
+		if err := ctx.bufferPendingPacket(target, []byte{1}); err == nil {
+			t.Fatal("expected udp pending payload limit error")
+		}
+		if ctx.pendingBytes != shadowsocksMaxPendingBytes {
+			t.Fatalf("pending bytes = %d, want %d", ctx.pendingBytes, shadowsocksMaxPendingBytes)
+		}
+	})
+
+	t.Run("udp zero body count", func(t *testing.T) {
+		ctx := NewShadowsocksUDPContext()
+		for range shadowsocksMaxPendingItems {
+			if err := ctx.bufferPendingPacket("127.0.0.1:53", nil); err != nil {
+				t.Fatalf("buffer zero-body packet below count limit: %v", err)
+			}
+		}
+		if err := ctx.bufferPendingPacket("127.0.0.1:53", nil); err == nil {
+			t.Fatal("expected zero-body packet count limit error")
+		}
+	})
+}
+
 func TestShadowsocksInletStartsTCPAndUDP(t *testing.T) {
 	logger := log.New(io.Discard, "", 0)
 	listenAddr := "127.0.0.1:" + freeTCPPort(t)

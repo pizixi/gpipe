@@ -71,3 +71,46 @@ func TestUpgradeManagerSnapshotExpiresStalledTask(t *testing.T) {
 		t.Fatal("expired task must not be offered again")
 	}
 }
+
+func TestUpgradeManagerSnapshotTimesOutStalledApply(t *testing.T) {
+	m := NewUpgradeManager()
+	offer, err := m.Start(10, "2.0.0", "linux-amd64", "secret", []byte("artifact"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactPath := m.tasks[10].artifactPath
+	m.tasks[10].state = "applying"
+	m.tasks[10].offset = offer.Size
+	m.tasks[10].updated = time.Now().Add(-upgradeApplyTTL - time.Second)
+
+	snapshot := m.Snapshot(10)
+	if snapshot.State != "failed" || snapshot.Progress != 100 || snapshot.Error != "upgrade apply timed out waiting for the client to restart" {
+		t.Fatalf("timed-out apply snapshot = %+v", snapshot)
+	}
+	if _, err := os.Stat(artifactPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("timed-out apply artifact was not removed: %v", err)
+	}
+}
+
+func TestUpgradeManagerDuplicateApplyingStatusDoesNotExtendDeadline(t *testing.T) {
+	m := NewUpgradeManager()
+	offer, err := m.Start(10, "2.0.0", "linux-amd64", "secret", []byte("artifact"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tasks[10].state = "applying"
+	m.tasks[10].offset = offer.Size
+	m.tasks[10].updated = time.Now().Add(-upgradeApplyTTL + time.Second)
+	previousUpdated := m.tasks[10].updated
+
+	if _, err := m.HandleStatus(10, &pb.UpgradeStatusReport{
+		TaskID: offer.TaskID,
+		State:  "applying",
+		Offset: offer.Size,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.tasks[10].updated; !got.Equal(previousUpdated) {
+		t.Fatalf("duplicate applying status moved deadline from %s to %s", previousUpdated, got)
+	}
+}

@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -14,6 +16,14 @@ const (
 	sessionReadyTimeout               = 10 * time.Second
 	udpSessionIdleTTL                 = 10 * time.Second
 	shadowsocksAuthFailureLogInterval = 5 * time.Second
+	defaultMaxInletSessions           = 4096
+	initialTemporaryAcceptDelay       = 5 * time.Millisecond
+	maxTemporaryAcceptDelay           = time.Second
+)
+
+var (
+	errInletStopped      = errors.New("inlet stopped")
+	errInletSessionLimit = errors.New("inlet session limit reached")
 )
 
 type inletSession struct {
@@ -25,6 +35,7 @@ type inletSession struct {
 	inputQ  *proxyMessageQueue
 	peerQ   *byteQueue
 	peerKey string
+	release func()
 
 	ctxMu     sync.Mutex
 	readyCh   chan struct{}
@@ -49,9 +60,12 @@ type Inlet struct {
 	mu       sync.RWMutex
 	sessions map[uint32]*inletSession
 	udpPeers map[string]uint32
+	closers  []io.Closer
+	stopped  bool
 	stopCh   chan struct{}
 	stopOnce sync.Once
 	runWG    sync.WaitGroup
+	slots    chan struct{}
 
 	authFailMu    sync.Mutex
 	authFailLogAt map[string]time.Time
@@ -71,6 +85,7 @@ func NewInlet(logger *log.Logger, tunnelID uint32, mode TunnelMode, listenAddr, 
 		sessions:      map[uint32]*inletSession{},
 		udpPeers:      map[string]uint32{},
 		stopCh:        make(chan struct{}),
+		slots:         make(chan struct{}, defaultMaxInletSessions),
 		authFailLogAt: map[string]time.Time{},
 	}
 }
@@ -105,6 +120,9 @@ func (i *Inlet) Stop() error {
 	})
 
 	i.mu.Lock()
+	i.stopped = true
+	closers := append([]io.Closer(nil), i.closers...)
+	i.closers = nil
 	sessions := make([]*inletSession, 0, len(i.sessions))
 	for _, session := range i.sessions {
 		sessions = append(sessions, session)
@@ -113,6 +131,9 @@ func (i *Inlet) Stop() error {
 	i.udpPeers = map[string]uint32{}
 	i.mu.Unlock()
 
+	for _, closer := range closers {
+		_ = closer.Close()
+	}
 	for _, session := range sessions {
 		session.shutdown(i.logger)
 	}
@@ -120,12 +141,19 @@ func (i *Inlet) Stop() error {
 	return nil
 }
 
-func (i *Inlet) runAsync(name string, fn func()) {
+func (i *Inlet) runAsync(name string, fn func()) bool {
+	i.mu.Lock()
+	if i.stopped {
+		i.mu.Unlock()
+		return false
+	}
 	i.runWG.Add(1)
+	i.mu.Unlock()
 	safeGo(i.logger, name, func() {
 		defer i.runWG.Done()
 		fn()
 	})
+	return true
 }
 
 func (i *Inlet) Input(message ProxyMessage) {
@@ -151,38 +179,62 @@ func (i *Inlet) startTCP() error {
 	if err != nil {
 		return err
 	}
-	i.runAsync(goroutineName("inlet-stop-tcp-listener-", i.tunnelID), func() {
-		<-i.stopCh
+	if !i.registerCloser(ln) {
 		_ = ln.Close()
-	})
-	i.runAsync(goroutineName("inlet-accept-", i.tunnelID), func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				if isExpectedNetCloseError(err) {
-					return
-				}
-				select {
-				case <-i.stopCh:
-					return
-				default:
-				}
-				i.logger.Printf("入口接受 TCP 连接失败: %v", err)
+		return errInletStopped
+	}
+	if !i.runAsync(goroutineName("inlet-accept-", i.tunnelID), func() {
+		i.acceptTCP(ln)
+	}) {
+		_ = ln.Close()
+		return errInletStopped
+	}
+	return nil
+}
+
+func (i *Inlet) acceptTCP(ln net.Listener) {
+	var retryDelay time.Duration
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if isExpectedNetCloseError(err) || i.isStopped() {
+				return
+			}
+			netErr, temporary := err.(net.Error)
+			if !temporary || !netErr.Temporary() {
+				i.logger.Printf("入口接受 TCP 连接失败，监听已停止: %v", err)
+				return
+			}
+			retryDelay = nextTemporaryAcceptDelay(retryDelay)
+			i.logger.Printf("入口接受 TCP 连接失败，将在 %s 后重试: %v", retryDelay, err)
+			if !i.waitRetry(retryDelay) {
+				return
+			}
+			continue
+		}
+		retryDelay = 0
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			if err := configureTCPConn(tcpConn); err != nil {
+				i.logger.Printf("入口配置 TCP 连接失败: %v", err)
+				_ = conn.Close()
 				continue
 			}
-			if tcpConn, ok := conn.(*net.TCPConn); ok {
-				if err := configureTCPConn(tcpConn); err != nil {
-					i.logger.Printf("入口配置 TCP 连接失败: %v", err)
-					_ = conn.Close()
-					continue
-				}
-			}
-			i.runAsync(goroutineName("inlet-tcp-session-", conn.RemoteAddr()), func() {
-				i.runTCPConn(conn)
-			})
 		}
-	})
-	return nil
+		if err := i.reserveSessionSlot(); err != nil {
+			_ = conn.Close()
+			if errors.Is(err, errInletStopped) {
+				return
+			}
+			continue
+		}
+		if !i.runAsync(goroutineName("inlet-tcp-session-", conn.RemoteAddr()), func() {
+			i.runTCPConn(conn, true)
+		}) {
+			i.releaseSessionSlot()
+			_ = conn.Close()
+			return
+		}
+	}
 }
 
 func (i *Inlet) startUDP() error {
@@ -194,12 +246,13 @@ func (i *Inlet) startUDP() error {
 	if err != nil {
 		return err
 	}
-	i.runAsync(goroutineName("inlet-stop-udp-socket-", i.tunnelID), func() {
-		<-i.stopCh
+	if !i.registerCloser(socket) {
 		_ = socket.Close()
-	})
-	i.runAsync(goroutineName("inlet-udp-loop-", i.tunnelID), func() {
+		return errInletStopped
+	}
+	if !i.runAsync(goroutineName("inlet-udp-loop-", i.tunnelID), func() {
 		buf := make([]byte, proxyUDPReadBufferSize)
+		var retryDelay time.Duration
 		for {
 			n, peer, err := socket.ReadFromUDP(buf)
 			if err != nil {
@@ -211,12 +264,23 @@ func (i *Inlet) startUDP() error {
 					return
 				default:
 				}
-				i.logger.Printf("入口 UDP 收包失败: %v", err)
+				retryDelay = nextTemporaryAcceptDelay(retryDelay)
+				i.logger.Printf("入口 UDP 收包失败，将在 %s 后重试: %v", retryDelay, err)
+				if !i.waitRetry(retryDelay) {
+					return
+				}
 				continue
 			}
+			retryDelay = 0
 			payload := append([]byte(nil), buf[:n]...)
 			session, created, err := i.ensureUDPSession(socket, peer)
 			if err != nil {
+				if errors.Is(err, errInletStopped) {
+					return
+				}
+				if errors.Is(err, errInletSessionLimit) {
+					continue
+				}
 				i.logger.Printf("入口 UDP 会话创建失败: %v", err)
 				continue
 			}
@@ -231,18 +295,23 @@ func (i *Inlet) startUDP() error {
 				}
 			}
 		}
-	})
+	}) {
+		_ = socket.Close()
+		return errInletStopped
+	}
 	return nil
 }
 
-func (i *Inlet) runTCPConn(conn net.Conn) {
+func (i *Inlet) runTCPConn(conn net.Conn, slotReserved bool) {
 	sessionID := NextSessionID()
 	writer := NewTCPWriter(conn)
 	peer := conn.RemoteAddr()
 	contextFactory := i.contextFactory()
-	session, err := i.runSession(sessionID, writer, peer, contextFactory, func() { _ = conn.Close() }, "")
+	session, err := i.runSession(sessionID, writer, peer, contextFactory, func() { _ = conn.Close() }, "", slotReserved)
 	if err != nil {
-		i.logger.Printf("入口 TCP 会话启动失败: %v", err)
+		if !errors.Is(err, errInletStopped) {
+			i.logger.Printf("入口 TCP 会话启动失败: %v", err)
+		}
 		_ = conn.Close()
 		return
 	}
@@ -287,7 +356,7 @@ func (i *Inlet) ensureUDPSession(socket *net.UDPConn, peer *net.UDPAddr) (*inlet
 	writer := NewUDPWriter(socket, peer)
 	session, err := i.runSession(sessionID, writer, peer, func() ContextHandler {
 		return i.newUDPContext()
-	}, nil, peerKey)
+	}, nil, peerKey, false)
 	if err != nil {
 		return nil, false, err
 	}
@@ -300,7 +369,19 @@ func (i *Inlet) ensureUDPSession(socket *net.UDPConn, peer *net.UDPAddr) (*inlet
 	return session, true, nil
 }
 
-func (i *Inlet) runSession(sessionID uint32, writer PeerWriter, peer net.Addr, contextFactory func() ContextHandler, closeFn func(), peerKey string) (*inletSession, error) {
+func (i *Inlet) runSession(sessionID uint32, writer PeerWriter, peer net.Addr, contextFactory func() ContextHandler, closeFn func(), peerKey string, slotReserved bool) (*inletSession, error) {
+	if !slotReserved {
+		if err := i.reserveSessionSlot(); err != nil {
+			return nil, err
+		}
+	}
+	slotOwnedBySession := false
+	defer func() {
+		if !slotOwnedBySession {
+			i.releaseSessionSlot()
+		}
+	}()
+
 	common := i.common.Clone()
 	data := NewContextData(i.tunnelID, i.mode, i.outputAddr, i.output, common, i.authData)
 	data.SetSessionID(sessionID)
@@ -313,6 +394,7 @@ func (i *Inlet) runSession(sessionID uint32, writer PeerWriter, peer net.Addr, c
 		close:   closeFn,
 		inputQ:  newProxyMessageQueue(),
 		peerKey: peerKey,
+		release: i.releaseSessionSlot,
 		readyCh: make(chan struct{}),
 		closed:  make(chan struct{}),
 	}
@@ -322,8 +404,14 @@ func (i *Inlet) runSession(sessionID uint32, writer PeerWriter, peer net.Addr, c
 	session.touch()
 
 	i.mu.Lock()
+	if i.stopped {
+		i.mu.Unlock()
+		common.Close()
+		return nil, errInletStopped
+	}
 	if _, exists := i.sessions[sessionID]; exists {
 		i.mu.Unlock()
+		common.Close()
 		return nil, fmt.Errorf("duplicate session id: %d", sessionID)
 	}
 	i.sessions[sessionID] = session
@@ -331,16 +419,85 @@ func (i *Inlet) runSession(sessionID uint32, writer PeerWriter, peer net.Addr, c
 		i.udpPeers[peerKey] = sessionID
 	}
 	i.mu.Unlock()
+	slotOwnedBySession = true
 
-	i.runAsync(goroutineName("inlet-proxy-session-", sessionID), func() {
+	if !i.runAsync(goroutineName("inlet-proxy-session-", sessionID), func() {
 		i.runProxyMessageLoop(session)
-	})
+	}) {
+		i.closeSession(sessionID)
+		return nil, errInletStopped
+	}
 
 	if err := session.onStart(peer, writer); err != nil {
 		i.closeSession(sessionID)
 		return nil, err
 	}
 	return session, nil
+}
+
+func (i *Inlet) registerCloser(closer io.Closer) bool {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.stopped {
+		return false
+	}
+	i.closers = append(i.closers, closer)
+	return true
+}
+
+func (i *Inlet) isStopped() bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.stopped
+}
+
+func (i *Inlet) reserveSessionSlot() error {
+	select {
+	case <-i.stopCh:
+		return errInletStopped
+	default:
+	}
+	select {
+	case i.slots <- struct{}{}:
+		select {
+		case <-i.stopCh:
+			i.releaseSessionSlot()
+			return errInletStopped
+		default:
+			return nil
+		}
+	default:
+		return errInletSessionLimit
+	}
+}
+
+func (i *Inlet) releaseSessionSlot() {
+	select {
+	case <-i.slots:
+	default:
+	}
+}
+
+func (i *Inlet) waitRetry(delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-i.stopCh:
+		return false
+	}
+}
+
+func nextTemporaryAcceptDelay(current time.Duration) time.Duration {
+	if current == 0 {
+		return initialTemporaryAcceptDelay
+	}
+	next := current * 2
+	if next > maxTemporaryAcceptDelay {
+		return maxTemporaryAcceptDelay
+	}
+	return next
 }
 
 func (i *Inlet) runProxyMessageLoop(session *inletSession) {
@@ -451,6 +608,11 @@ func (i *Inlet) session(sessionID uint32) *inletSession {
 func (s *inletSession) onStart(peer net.Addr, writer PeerWriter) error {
 	s.ctxMu.Lock()
 	defer s.ctxMu.Unlock()
+	select {
+	case <-s.closed:
+		return errInletStopped
+	default:
+	}
 	if err := s.context.OnStart(s.data, peer, writer); err != nil {
 		return err
 	}
@@ -518,6 +680,9 @@ func (s *inletSession) shutdown(logger *log.Logger) {
 			}
 			return nil
 		})
+		if s.release != nil {
+			s.release()
+		}
 	})
 }
 

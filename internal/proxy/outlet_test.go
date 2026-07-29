@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log"
@@ -169,5 +170,175 @@ func TestOutletTerminatesSessionWhenInputQueueOverflows(t *testing.T) {
 	}
 	if writer.closeCount.Load() == 0 {
 		t.Fatalf("expected writer to be closed after queue overflow")
+	}
+}
+
+func TestOutletStopCancelsPendingConnect(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	started := make(chan struct{})
+	canceled := make(chan struct{})
+	outlet := NewOutlet(logger, func(ProxyMessage) {}, "test")
+	outlet.dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		close(started)
+		<-ctx.Done()
+		close(canceled)
+		return nil, ctx.Err()
+	}
+	outlet.Input(I2OConnect{TunnelID: 1, ID: 99, IsTCP: true, Addr: "127.0.0.1:9", EncryptionKey: EncodeKeyToBase64([]byte("None"))})
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("pending connect did not start")
+	}
+	if err := outlet.Stop(); err != nil {
+		t.Fatalf("stop outlet: %v", err)
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("pending connect was not canceled")
+	}
+	outlet.mu.RLock()
+	defer outlet.mu.RUnlock()
+	if len(outlet.sessions) != 0 || len(outlet.connecting) != 0 {
+		t.Fatalf("outlet retained sessions=%d connecting=%d after stop", len(outlet.sessions), len(outlet.connecting))
+	}
+}
+
+func TestOutletDisconnectCancelsPendingConnect(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	started := make(chan struct{})
+	canceled := make(chan struct{})
+	outputs := make(chan ProxyMessage, 1)
+	outlet := NewOutlet(logger, func(message ProxyMessage) { outputs <- message }, "test")
+	outlet.dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		close(started)
+		<-ctx.Done()
+		close(canceled)
+		return nil, ctx.Err()
+	}
+	msg := I2OConnect{TunnelID: 1, ID: 101, IsTCP: true, Addr: "127.0.0.1:9", EncryptionKey: EncodeKeyToBase64([]byte("None"))}
+	outlet.Input(msg)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("pending connect did not start")
+	}
+	outlet.Input(I2ODisconnect{TunnelID: msg.TunnelID, ID: msg.ID})
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("disconnect did not cancel pending connect")
+	}
+	if err := outlet.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case output := <-outputs:
+		t.Fatalf("canceled connect emitted stale output: %#v", output)
+	default:
+	}
+}
+
+func TestOutletCanceledDialCannotInstallLateConnection(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	started := make(chan struct{})
+	releaseDial := make(chan struct{})
+	outputs := make(chan ProxyMessage, 1)
+	outletConn, targetConn := net.Pipe()
+	defer targetConn.Close()
+	outlet := NewOutlet(logger, func(message ProxyMessage) { outputs <- message }, "test")
+	outlet.dialContext = func(context.Context, string, string) (net.Conn, error) {
+		close(started)
+		<-releaseDial
+		return outletConn, nil
+	}
+	msg := I2OConnect{TunnelID: 1, ID: 103, IsTCP: true, Addr: "127.0.0.1:9", EncryptionKey: EncodeKeyToBase64([]byte("None"))}
+	outlet.Input(msg)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("pending connect did not start")
+	}
+	outlet.Input(I2ODisconnect{TunnelID: msg.TunnelID, ID: msg.ID})
+	close(releaseDial)
+	if err := outlet.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := targetConn.Read(make([]byte, 1)); err == nil {
+		t.Fatal("late target connection remained open after canceled dial")
+	}
+	select {
+	case output := <-outputs:
+		t.Fatalf("late canceled connection emitted stale output: %#v", output)
+	default:
+	}
+}
+
+func TestOutletOldConnectAttemptCannotCancelReusedSessionID(t *testing.T) {
+	outlet := NewOutlet(log.New(io.Discard, "", 0), func(ProxyMessage) {}, "test")
+	_, cancelOld := context.WithCancel(context.Background())
+	newContext, cancelNew := context.WithCancel(context.Background())
+	defer cancelNew()
+	oldAttempt := &outletConnectAttempt{cancel: cancelOld}
+	newAttempt := &outletConnectAttempt{cancel: cancelNew}
+	outlet.connecting[102] = newAttempt
+
+	outlet.finishConnectAttempt(102, oldAttempt)
+
+	outlet.mu.RLock()
+	got := outlet.connecting[102]
+	outlet.mu.RUnlock()
+	if got != newAttempt {
+		t.Fatal("finishing old attempt removed the new attempt for a reused session ID")
+	}
+	select {
+	case <-newContext.Done():
+		t.Fatal("finishing old attempt canceled the new attempt")
+	default:
+	}
+	if err := outlet.Stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOutletRejectsConcurrentDuplicateConnect(t *testing.T) {
+	logger := log.New(io.Discard, "", 0)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	outputs := make(chan ProxyMessage, 2)
+	outlet := NewOutlet(logger, func(message ProxyMessage) { outputs <- message }, "test")
+	outlet.dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-release:
+			return nil, errors.New("released test dial")
+		}
+	}
+	msg := I2OConnect{TunnelID: 1, ID: 100, IsTCP: true, Addr: "127.0.0.1:9", EncryptionKey: EncodeKeyToBase64([]byte("None"))}
+	outlet.Input(msg)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first connect did not start")
+	}
+	outlet.Input(msg)
+	select {
+	case output := <-outputs:
+		reply, ok := output.(O2IConnect)
+		if !ok || reply.Success || reply.ErrorInfo != "repeated connection" {
+			t.Fatalf("duplicate reply = %#v", output)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("duplicate connect was not rejected")
+	}
+	close(release)
+	if err := outlet.Stop(); err != nil {
+		t.Fatal(err)
 	}
 }

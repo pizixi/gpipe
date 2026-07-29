@@ -513,6 +513,84 @@ func TestTunnelNotifierSendsSingleRuntimeUpdatePerPeer(t *testing.T) {
 	expectNoQueuedPushWithin(t, senderSession, 200*time.Millisecond)
 }
 
+func TestSessionRejectsUnauthorizedAndDisabledTunnelMessages(t *testing.T) {
+	database, err := db.Open("sqlite://file:test_session_tunnel_message_authorization?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	rt, err := manager.NewRuntime(database, nil)
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+	_, _, receiverID, err := rt.Players.Add("receiver-auth", "receiver-auth-key")
+	if err != nil {
+		t.Fatalf("add receiver: %v", err)
+	}
+	_, _, senderID, err := rt.Players.Add("sender-auth", "sender-auth-key")
+	if err != nil {
+		t.Fatalf("add sender: %v", err)
+	}
+	_, _, attackerID, err := rt.Players.Add("attacker-auth", "attacker-auth-key")
+	if err != nil {
+		t.Fatalf("add attacker: %v", err)
+	}
+	active, err := rt.Tunnel.Add(model.Tunnel{
+		Source: "127.0.0.1:" + freeTCPPort(t), Endpoint: "127.0.0.1:9", Enabled: true,
+		Sender: senderID, Receiver: receiverID, TunnelType: uint32(model.TunnelTypeTCP), EncryptionMethod: "None",
+	})
+	if err != nil {
+		t.Fatalf("add active tunnel: %v", err)
+	}
+	disabled, err := rt.Tunnel.Add(model.Tunnel{
+		Source: "127.0.0.1:" + freeTCPPort(t), Endpoint: "127.0.0.1:9", Enabled: false,
+		Sender: senderID, Receiver: receiverID, TunnelType: uint32(model.TunnelTypeTCP), EncryptionMethod: "None",
+	})
+	if err != nil {
+		t.Fatalf("add disabled tunnel: %v", err)
+	}
+
+	logger := log.New(io.Discard, "", 0)
+	hub := NewHub(logger)
+	hub.SetRuntime(rt)
+	target, targetPeer := newQueuedSession(hub, logger)
+	defer targetPeer.Close()
+	hub.registerPlayer(senderID, target)
+
+	queueSize := func() int {
+		target.writeQueue.mu.Lock()
+		defer target.writeQueue.mu.Unlock()
+		return target.writeQueue.size
+	}
+	message := func(tunnelID uint32) *pb.I2OConnect {
+		return &pb.I2OConnect{TunnelID: tunnelID, SessionID: 1, Addr: "127.0.0.1:9"}
+	}
+
+	attacker := &Session{id: 10, playerID: attackerID, hub: hub, logger: logger}
+	if err := attacker.handlePush(message(active.ID)); err != nil {
+		t.Fatalf("handle attacker message: %v", err)
+	}
+	if got := queueSize(); got != 0 {
+		t.Fatalf("unauthorized message queued %d frames, want 0", got)
+	}
+
+	receiver := &Session{id: 11, playerID: receiverID, hub: hub, logger: logger}
+	if err := receiver.handlePush(message(disabled.ID)); err != nil {
+		t.Fatalf("handle disabled tunnel message: %v", err)
+	}
+	if got := queueSize(); got != 0 {
+		t.Fatalf("disabled tunnel message queued %d frames, want 0", got)
+	}
+
+	if err := receiver.handlePush(message(active.ID)); err != nil {
+		t.Fatalf("handle authorized message: %v", err)
+	}
+	if got := queueSize(); got != 1 {
+		t.Fatalf("authorized message queued %d frames, want 1", got)
+	}
+}
+
 func newQueuedSession(hub *Hub, logger *log.Logger) (*Session, net.Conn) {
 	serverConn, clientConn := net.Pipe()
 	return &Session{

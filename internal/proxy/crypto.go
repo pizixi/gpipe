@@ -5,21 +5,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sync"
 
 	aessiv "github.com/jedisct1/go-aes-siv"
 	"github.com/pierrec/lz4/v4"
 )
-
-// lz4HashTablePool 复用 LZ4 压缩用的 hashtable，避免每次压缩都重新分配，
-// 同时绕开旧版本 pierrec/lz4 在传 nil hashTable 路径上对低可压缩数据的边界 bug。
-var lz4HashTablePool = sync.Pool{
-	New: func() any {
-		// pierrec/lz4 v4 默认 hashtable 大小为 1<<16。
-		table := make([]int, 1<<16)
-		return &table
-	},
-}
 
 // lz4MaxDecompressedSize 是单个块允许的最大解压尺寸（与 LZ4 块格式上限一致）。
 // 在生产中我们的 TCP/UDP 单次读取上限为 64KB，留较大冗余以兜底潜在编码端缺陷。
@@ -33,6 +22,8 @@ const (
 	EncryptionAES128 EncryptionMethod = "Aes128"
 	EncryptionXor    EncryptionMethod = "Xor"
 )
+
+type aesSIVCipher = aessiv.AESSIV
 
 func ParseEncryptionMethod(name string) EncryptionMethod {
 	switch name {
@@ -89,13 +80,9 @@ func CompressData(input []byte) ([]byte, error) {
 	out := make([]byte, 4+maxSize)
 	binary.LittleEndian.PutUint32(out[:4], uint32(len(input)))
 
-	tablePtr := lz4HashTablePool.Get().(*[]int)
-	table := *tablePtr
-	for i := range table {
-		table[i] = 0
-	}
-	n, err := lz4.CompressBlock(input, out[4:], table)
-	lz4HashTablePool.Put(tablePtr)
+	// 当前 lz4/v4 已忽略旧版 hashTable 参数，并在内部复用带位图重置的 Compressor。
+	// 传 nil 可避免每包额外清零 512 KiB 的无效工作，编码格式与压缩算法不变。
+	n, err := lz4.CompressBlock(input, out[4:], nil)
 	if err != nil {
 		// 编码失败时退回纯 literal 块，保证整条链路稳定。
 		return appendLZ4LiteralBlock(out[:4], input), nil
@@ -211,14 +198,24 @@ func xorData(data []byte, key []byte) []byte {
 // 3. 用 AES-SIV 加密
 // 4. 以 [16 字节 nonce][8 字节长度][密文] 的形式序列化
 func encryptAES128SIV(password []byte, data []byte) ([]byte, error) {
-	key := make([]byte, 32)
-	copy(key, password)
-	nonce := make([]byte, 16)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	cipher, err := newAES128SIVCipher(password)
+	if err != nil {
 		return nil, err
 	}
-	cipher, err := aessiv.New(key)
-	if err != nil {
+	return encryptAES128SIVWithCipher(cipher, data)
+}
+
+func newAES128SIVCipher(password []byte) (*aesSIVCipher, error) {
+	key := make([]byte, 32)
+	copy(key, password)
+	return aessiv.New(key)
+}
+
+// AESSIV 只持有初始化后的 AES block 和只读 CMAC 子密钥，Seal/Open 的工作区均为局部变量，
+// 因而同一会话的上下行可以安全复用该实例，避免每个数据包重复展开密钥。
+func encryptAES128SIVWithCipher(cipher *aesSIVCipher, data []byte) ([]byte, error) {
+	nonce := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, err
 	}
 	ciphertext := cipher.Seal(nil, nonce, data, nil)
@@ -231,19 +228,21 @@ func encryptAES128SIV(password []byte, data []byte) ([]byte, error) {
 
 // decryptAES128SIV 对齐 simplestcrypt::deserialize_and_decrypt。
 func decryptAES128SIV(password []byte, serialized []byte) ([]byte, error) {
+	cipher, err := newAES128SIVCipher(password)
+	if err != nil {
+		return nil, err
+	}
+	return decryptAES128SIVWithCipher(cipher, serialized)
+}
+
+func decryptAES128SIVWithCipher(cipher *aesSIVCipher, serialized []byte) ([]byte, error) {
 	if len(serialized) < 24 {
 		return nil, fmt.Errorf("Aes128 数据长度不足")
 	}
-	key := make([]byte, 32)
-	copy(key, password)
 	nonce := append([]byte(nil), serialized[:16]...)
 	size := binary.LittleEndian.Uint64(serialized[16:24])
 	if int(size) != len(serialized[24:]) {
 		return nil, fmt.Errorf("Aes128 密文长度不匹配")
-	}
-	cipher, err := aessiv.New(key)
-	if err != nil {
-		return nil, err
 	}
 	return cipher.Open(nil, nonce, serialized[24:], nil)
 }

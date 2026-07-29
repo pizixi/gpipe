@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -46,6 +47,30 @@ func TestClientSessionCloseStopsProxyManager(t *testing.T) {
 
 	session.close()
 	waitForTCPState(t, addr, false)
+}
+
+func TestClientSessionSendTimesOutWhenControlConnectionStopsReading(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer serverConn.Close()
+	defer clientConn.Close()
+
+	oldTimeout := clientSessionWriteTimeout
+	clientSessionWriteTimeout = 50 * time.Millisecond
+	defer func() { clientSessionWriteTimeout = oldTimeout }()
+
+	session := newClientSession(Options{Logger: log.New(io.Discard, "", 0)}, serverConn)
+	started := time.Now()
+	err := session.send(0, &pb.Ping{Ticks: 1})
+	if err == nil {
+		t.Fatalf("expected blocked control write to time out")
+	}
+	var netErr net.Error
+	if !errors.As(err, &netErr) || !netErr.Timeout() {
+		t.Fatalf("send error = %v, want timeout", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("blocked control write took %s, want bounded timeout", elapsed)
+	}
 }
 
 func TestTLSConfigSkipsVerificationForEncryptionOnlyMode(t *testing.T) {

@@ -83,6 +83,7 @@ type SessionCommonInfo struct {
 	Method       EncryptionMethod
 	Key          []byte
 	Flow         *FlowController
+	aesSIV       *aesSIVCipher
 }
 
 // proxyFlowWindowBytes 控制单会话未确认的 inflight 字节上限。
@@ -91,12 +92,17 @@ type SessionCommonInfo struct {
 const proxyFlowWindowBytes = 4 * 1024 * 1024
 
 func NewSessionCommonInfo(isCompressed bool, method EncryptionMethod, key []byte) *SessionCommonInfo {
-	return &SessionCommonInfo{
+	common := &SessionCommonInfo{
 		IsCompressed: isCompressed,
 		Method:       method,
 		Key:          append([]byte(nil), key...),
 		Flow:         NewFlowController(proxyFlowWindowBytes),
 	}
+	if method == EncryptionAES128 {
+		// 密钥始终会被规范化为 AES-SIV 所需的 32 字节，因此这里不会返回错误。
+		common.aesSIV, _ = newAES128SIVCipher(key)
+	}
+	return common
 }
 
 func NewSessionCommonInfoFromName(isCompressed bool, methodName string) (*SessionCommonInfo, error) {
@@ -138,7 +144,11 @@ func (c *SessionCommonInfo) EncodeDataAndLimit(data []byte) ([]byte, error) {
 		// Encrypt 内部会拷贝，这里不需要额外拷贝。
 		out = data
 	}
-	out, err = Encrypt(c.Method, c.Key, out)
+	if c.Method == EncryptionAES128 && c.aesSIV != nil {
+		out, err = encryptAES128SIVWithCipher(c.aesSIV, out)
+	} else {
+		out, err = Encrypt(c.Method, c.Key, out)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +160,15 @@ func (c *SessionCommonInfo) EncodeDataAndLimit(data []byte) ([]byte, error) {
 
 // DecodeData 的顺序与 Rust 一致：先解密，再解压。
 func (c *SessionCommonInfo) DecodeData(data []byte) ([]byte, error) {
-	out, err := Decrypt(c.Method, c.Key, data)
+	var (
+		out []byte
+		err error
+	)
+	if c.Method == EncryptionAES128 && c.aesSIV != nil {
+		out, err = decryptAES128SIVWithCipher(c.aesSIV, data)
+	} else {
+		out, err = Decrypt(c.Method, c.Key, data)
+	}
 	if err != nil {
 		return nil, err
 	}

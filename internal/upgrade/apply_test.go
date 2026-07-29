@@ -1,11 +1,64 @@
 package upgrade
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestRetryRenameRunsRecoveryHookBeforeEveryAttempt(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "candidate")
+	destination := filepath.Join(dir, "client")
+	if err := os.WriteFile(destination, []byte("old-client"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hookCalls := 0
+	err := retryRenameWithHook(source, destination, time.Second, func() error {
+		hookCalls++
+		if hookCalls == 2 {
+			return os.WriteFile(source, []byte("new-client"), 0o700)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hookCalls != 2 {
+		t.Fatalf("recovery hook calls = %d, want one call before each replacement attempt", hookCalls)
+	}
+}
+
+func TestRetryRenameDoesNotReplaceWhenRecoveryHookFails(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "candidate")
+	destination := filepath.Join(dir, "client")
+	if err := os.WriteFile(source, []byte("new-client"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(destination, []byte("old-client"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stopErr := errors.New("service is still running")
+	err := retryRenameWithHook(source, destination, 10*time.Millisecond, func() error {
+		return stopErr
+	})
+	if !errors.Is(err, stopErr) {
+		t.Fatalf("retry error = %v, want service stop error", err)
+	}
+	data, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "old-client" {
+		t.Fatalf("destination was replaced despite failed stop hook: %q", data)
+	}
+	if _, err := os.Stat(source); err != nil {
+		t.Fatalf("candidate was consumed despite failed stop hook: %v", err)
+	}
+}
 
 func TestApplyHelperRestoresBackupWhenNewBinaryCannotStart(t *testing.T) {
 	dir := t.TempDir()

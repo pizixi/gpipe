@@ -6,6 +6,13 @@ import (
 	"sync/atomic"
 )
 
+const (
+	shadowsocksMaxPendingBytes             = 512 * 1024
+	shadowsocksMaxPendingItems             = 4096
+	shadowsocksTCPPendingItemOverheadBytes = 24
+	shadowsocksUDPPendingItemOverheadBytes = 40
+)
+
 type shadowsocksTCPStatus int32
 
 const (
@@ -15,13 +22,14 @@ const (
 )
 
 type ShadowsocksTCPContext struct {
-	status   atomic.Int32
-	writer   PeerWriter
-	data     *ContextData
-	peerAddr net.Addr
-	reader   *shadowsocksStreamReader
-	encoder  *shadowsocksStreamWriter
-	pending  [][]byte
+	status       atomic.Int32
+	writer       PeerWriter
+	data         *ContextData
+	peerAddr     net.Addr
+	reader       *shadowsocksStreamReader
+	encoder      *shadowsocksStreamWriter
+	pending      [][]byte
+	pendingBytes int
 }
 
 type shadowsocksUDPPendingPacket struct {
@@ -30,11 +38,12 @@ type shadowsocksUDPPendingPacket struct {
 }
 
 type ShadowsocksUDPContext struct {
-	connected atomic.Bool
-	writer    PeerWriter
-	data      *ContextData
-	peerAddr  net.Addr
-	pending   []shadowsocksUDPPendingPacket
+	connected    atomic.Bool
+	writer       PeerWriter
+	data         *ContextData
+	peerAddr     net.Addr
+	pending      []shadowsocksUDPPendingPacket
+	pendingBytes int
 }
 
 func NewShadowsocksTCPContext() *ShadowsocksTCPContext {
@@ -86,12 +95,14 @@ func (c *ShadowsocksTCPContext) OnProxyMessage(message ProxyMessage) error {
 			return nil
 		}
 		c.status.Store(int32(shadowsocksTCPStatusRunning))
-		for _, payload := range c.pending {
+		pending := c.pending
+		c.pending = nil
+		c.pendingBytes = 0
+		for _, payload := range pending {
 			if err := c.sendPayload(payload); err != nil {
 				return err
 			}
 		}
-		c.pending = nil
 	case O2IRecvData:
 		decoded, err := c.data.common.DecodeData(msg.Data)
 		if err != nil {
@@ -146,14 +157,27 @@ func (c *ShadowsocksTCPContext) handleChunk(chunk []byte) error {
 			ClientAddr:       c.peerAddr.String(),
 		})
 		if len(body) > 0 {
-			c.pending = append(c.pending, append([]byte(nil), body...))
+			return c.bufferPendingPayload(body)
 		}
 	case shadowsocksTCPStatusConnecting:
-		c.pending = append(c.pending, append([]byte(nil), chunk...))
+		return c.bufferPendingPayload(chunk)
 	case shadowsocksTCPStatusRunning:
 		return c.sendPayload(chunk)
 	}
 
+	return nil
+}
+
+func (c *ShadowsocksTCPContext) bufferPendingPayload(payload []byte) error {
+	if len(payload) == 0 {
+		return nil
+	}
+	cost := shadowsocksTCPPendingItemOverheadBytes + len(payload)
+	if len(c.pending) >= shadowsocksMaxPendingItems || c.pendingBytes+cost > shadowsocksMaxPendingBytes {
+		return fmt.Errorf("shadowsocks tcp pending payload too large")
+	}
+	c.pending = append(c.pending, append([]byte(nil), payload...))
+	c.pendingBytes += cost
 	return nil
 }
 
@@ -201,11 +225,7 @@ func (c *ShadowsocksUDPContext) OnPeerData(data *ContextData, payload []byte) er
 		return err
 	}
 	if !c.connected.Load() {
-		c.pending = append(c.pending, shadowsocksUDPPendingPacket{
-			target: target.String(),
-			body:   append([]byte(nil), body...),
-		})
-		return nil
+		return c.bufferPendingPacket(target.String(), body)
 	}
 	return c.sendPacket(target.String(), body)
 }
@@ -217,12 +237,14 @@ func (c *ShadowsocksUDPContext) OnProxyMessage(message ProxyMessage) error {
 			return fmt.Errorf("shadowsocks udp connect failed: %s", msg.ErrorInfo)
 		}
 		c.connected.Store(true)
-		for _, packet := range c.pending {
+		pending := c.pending
+		c.pending = nil
+		c.pendingBytes = 0
+		for _, packet := range pending {
 			if err := c.sendPacket(packet.target, packet.body); err != nil {
 				return err
 			}
 		}
-		c.pending = nil
 	case O2IRecvDataFrom:
 		decoded, err := c.data.common.DecodeData(msg.Data)
 		if err != nil {
@@ -248,6 +270,21 @@ func (c *ShadowsocksUDPContext) OnProxyMessage(message ProxyMessage) error {
 	case O2IDisconnect:
 		return nil
 	}
+	return nil
+}
+
+func (c *ShadowsocksUDPContext) bufferPendingPacket(target string, body []byte) error {
+	// 除正文外还计入目标字符串和切片/字符串字段的固定开销；包数量另设硬上限，
+	// 防止零正文 UDP 包绕过字节预算并无限扩张 pending 切片。
+	cost := shadowsocksUDPPendingItemOverheadBytes + len(target) + len(body)
+	if len(c.pending) >= shadowsocksMaxPendingItems || c.pendingBytes+cost > shadowsocksMaxPendingBytes {
+		return fmt.Errorf("shadowsocks udp pending payload too large")
+	}
+	c.pending = append(c.pending, shadowsocksUDPPendingPacket{
+		target: target,
+		body:   append([]byte(nil), body...),
+	})
+	c.pendingBytes += cost
 	return nil
 }
 

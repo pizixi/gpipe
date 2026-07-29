@@ -199,3 +199,99 @@ func TestHTTPContextBuffersPayloadWhileConnecting(t *testing.T) {
 		t.Fatalf("expected CONNECT established response, got %q", string(response))
 	}
 }
+
+func TestHTTPContextStreamsRequestBodySplitAcrossReads(t *testing.T) {
+	var outputs []ProxyMessage
+	ctxData := NewContextData(
+		13,
+		TunnelModeHTTP,
+		"",
+		func(msg ProxyMessage) { outputs = append(outputs, msg) },
+		NewSessionCommonInfo(false, ParseEncryptionMethod("None"), nil),
+		InletAuthData{},
+	)
+	ctxData.SetSessionID(14)
+
+	ctx := NewHTTPContext()
+	if err := ctx.OnStart(ctxData, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 6789}, &testPeerWriter{}); err != nil {
+		t.Fatalf("OnStart failed: %v", err)
+	}
+	first := "POST http://example.com/upload HTTP/1.1\r\nHost: example.com\r\nContent-Length: 10\r\nProxy-Authorization: Basic abc\r\n\r\nabc"
+	if err := ctx.OnPeerData(ctxData, []byte(first)); err != nil {
+		t.Fatalf("OnPeerData first body chunk failed: %v", err)
+	}
+	if err := ctx.OnPeerData(ctxData, []byte("defghij")); err != nil {
+		t.Fatalf("OnPeerData second body chunk failed: %v", err)
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs before connect = %d, want 1", len(outputs))
+	}
+	if err := ctx.OnProxyMessage(O2IConnect{TunnelID: 13, ID: 14, Success: true}); err != nil {
+		t.Fatalf("connect reply failed: %v", err)
+	}
+
+	var forwarded []byte
+	for _, output := range outputs[1:] {
+		send, ok := output.(I2OSendData)
+		if !ok {
+			continue
+		}
+		decoded, err := ctxData.common.DecodeData(send.Data)
+		if err != nil {
+			t.Fatalf("decode forwarded request: %v", err)
+		}
+		forwarded = append(forwarded, decoded...)
+	}
+	text := string(forwarded)
+	if !strings.HasPrefix(text, "POST /upload HTTP/1.1\r\n") {
+		t.Fatalf("unexpected rewritten request: %q", text)
+	}
+	if !strings.Contains(text, "Content-Length: 10\r\n") {
+		t.Fatalf("content length was not preserved: %q", text)
+	}
+	if strings.Contains(text, "Proxy-Authorization") {
+		t.Fatalf("proxy authorization leaked upstream: %q", text)
+	}
+	if !strings.HasSuffix(text, "\r\n\r\nabcdefghij") {
+		t.Fatalf("split request body was not preserved: %q", text)
+	}
+}
+
+func TestHTTPConnectPreservesPayloadReceivedWithHeader(t *testing.T) {
+	var outputs []ProxyMessage
+	ctxData := NewContextData(
+		15,
+		TunnelModeHTTP,
+		"",
+		func(msg ProxyMessage) { outputs = append(outputs, msg) },
+		NewSessionCommonInfo(false, ParseEncryptionMethod("None"), nil),
+		InletAuthData{},
+	)
+	ctxData.SetSessionID(16)
+	writer := &testPeerWriter{}
+	ctx := NewHTTPContext()
+	if err := ctx.OnStart(ctxData, &net.TCPAddr{}, writer); err != nil {
+		t.Fatal(err)
+	}
+	request := "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\nclient-hello"
+	if err := ctx.OnPeerData(ctxData, []byte(request)); err != nil {
+		t.Fatalf("OnPeerData failed: %v", err)
+	}
+	if err := ctx.OnProxyMessage(O2IConnect{TunnelID: 15, ID: 16, Success: true}); err != nil {
+		t.Fatalf("connect reply failed: %v", err)
+	}
+	if len(outputs) != 2 {
+		t.Fatalf("outputs after connect = %d, want 2", len(outputs))
+	}
+	send, ok := outputs[1].(I2OSendData)
+	if !ok {
+		t.Fatalf("expected buffered payload, got %T", outputs[1])
+	}
+	decoded, err := ctxData.common.DecodeData(send.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded) != "client-hello" {
+		t.Fatalf("buffered CONNECT payload = %q", decoded)
+	}
+}

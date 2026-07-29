@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -17,23 +18,34 @@ type outletSession struct {
 	once   sync.Once
 }
 
+type outletConnectAttempt struct {
+	cancel context.CancelFunc
+}
+
 // Outlet 负责连接出口目标，并把远端返回的数据转成代理消息。
 type Outlet struct {
 	logger      *log.Logger
 	tunnelID    uint32
 	description string
 	output      OutputFunc
+	dialContext func(context.Context, string, string) (net.Conn, error)
 
-	mu       sync.RWMutex
-	sessions map[uint32]*outletSession
+	mu         sync.RWMutex
+	sessions   map[uint32]*outletSession
+	connecting map[uint32]*outletConnectAttempt
+	stopped    bool
+	connectWG  sync.WaitGroup
 }
 
 func NewOutlet(logger *log.Logger, output OutputFunc, description string) *Outlet {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
 	return &Outlet{
 		logger:      logger,
 		description: description,
 		output:      output,
 		sessions:    map[uint32]*outletSession{},
+		connecting:  map[uint32]*outletConnectAttempt{},
+		dialContext: dialer.DialContext,
 	}
 }
 
@@ -43,24 +55,42 @@ func (o *Outlet) Description() string {
 
 func (o *Outlet) Stop() error {
 	o.mu.Lock()
-	defer o.mu.Unlock()
+	if o.stopped {
+		o.mu.Unlock()
+		o.connectWG.Wait()
+		return nil
+	}
+	o.stopped = true
+	cancels := make([]context.CancelFunc, 0, len(o.connecting))
+	for _, attempt := range o.connecting {
+		cancels = append(cancels, attempt.cancel)
+	}
+	o.connecting = map[uint32]*outletConnectAttempt{}
+	sessions := make([]*outletSession, 0, len(o.sessions))
 	for _, session := range o.sessions {
+		sessions = append(sessions, session)
+	}
+	o.sessions = map[uint32]*outletSession{}
+	o.mu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+	for _, session := range sessions {
 		session.common.Close()
 		session.stopInput()
 		if session.close != nil {
 			session.close()
 		}
 	}
-	o.sessions = map[uint32]*outletSession{}
+	o.connectWG.Wait()
 	return nil
 }
 
 func (o *Outlet) Input(message ProxyMessage) {
 	switch msg := message.(type) {
 	case I2OConnect:
-		safeGo(o.logger, goroutineName("outlet-connect-", msg.ID), func() {
-			o.onConnect(msg)
-		})
+		o.startConnect(msg)
 	case I2OSendData:
 		if session, ok := o.session(msg.ID); ok {
 			if !session.inputQ.Push(msg) {
@@ -76,27 +106,50 @@ func (o *Outlet) Input(message ProxyMessage) {
 			}
 		}
 	case I2ODisconnect:
-		if session, ok := o.session(msg.ID); ok {
-			if !session.inputQ.Push(msg) {
-				o.logger.Printf("出口会话消息被丢弃: session=%d", msg.ID)
-				o.terminateSession(msg.TunnelID, msg.ID)
-			}
-		}
+		o.onDisconnectInput(msg)
 	case I2ORecvDataResult:
 		o.onRecvResult(msg)
 	}
 }
 
-func (o *Outlet) onConnect(msg I2OConnect) {
-	if _, ok := o.session(msg.ID); ok {
+func (o *Outlet) startConnect(msg I2OConnect) {
+	ctx, cancel := context.WithCancel(context.Background())
+	attempt := &outletConnectAttempt{cancel: cancel}
+	o.mu.Lock()
+	if o.stopped {
+		o.mu.Unlock()
+		cancel()
+		return
+	}
+	if _, ok := o.sessions[msg.ID]; ok {
+		o.mu.Unlock()
+		cancel()
 		o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: "repeated connection"})
 		return
 	}
+	if _, ok := o.connecting[msg.ID]; ok {
+		o.mu.Unlock()
+		cancel()
+		o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: "repeated connection"})
+		return
+	}
+	o.connecting[msg.ID] = attempt
+	o.connectWG.Add(1)
+	o.mu.Unlock()
+
+	safeGo(o.logger, goroutineName("outlet-connect-", msg.ID), func() {
+		defer o.connectWG.Done()
+		defer o.finishConnectAttempt(msg.ID, attempt)
+		o.onConnect(ctx, msg, attempt)
+	})
+}
+
+func (o *Outlet) onConnect(ctx context.Context, msg I2OConnect, attempt *outletConnectAttempt) {
 
 	method := ParseEncryptionMethod(msg.EncryptionMethod)
 	key, err := DecodeKeyFromBase64(msg.EncryptionKey)
 	if err != nil {
-		o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: err.Error()})
+		o.failConnect(msg, attempt, err.Error())
 		return
 	}
 	common := NewSessionCommonInfo(msg.IsCompressed, method, key)
@@ -113,21 +166,25 @@ func (o *Outlet) onConnect(msg I2OConnect) {
 	}
 
 	if connectTCP {
-		dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-		conn, err := dialer.Dial("tcp", addr)
+		conn, err := o.dialContext(ctx, "tcp", addr)
 		if err != nil {
-			o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: fmt.Sprintf("target=tcp://%s, reason=%v", addr, err)})
+			o.failConnect(msg, attempt, fmt.Sprintf("target=tcp://%s, reason=%v", addr, err))
 			return
 		}
 		if tcpConn, ok := conn.(*net.TCPConn); ok {
 			if err := configureTCPConn(tcpConn); err != nil {
 				_ = conn.Close()
-				o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: err.Error()})
+				o.failConnect(msg, attempt, err.Error())
 				return
 			}
 		}
 		writer := NewTCPWriter(conn)
-		o.putSession(msg.ID, &outletSession{id: msg.ID, writer: writer, common: common, close: func() { _ = conn.Close() }, inputQ: newProxyMessageQueue()})
+		session := &outletSession{id: msg.ID, writer: writer, common: common, close: func() { _ = conn.Close() }, inputQ: newProxyMessageQueue()}
+		if !o.installConnectedSession(msg.ID, attempt, session) {
+			common.Close()
+			_ = conn.Close()
+			return
+		}
 		o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: true})
 		safeGo(o.logger, goroutineName("outlet-read-tcp-", msg.ID), func() {
 			o.readTCP(msg.TunnelID, msg.ID, conn, common, mode == TunnelModeSOCKS5)
@@ -138,29 +195,93 @@ func (o *Outlet) onConnect(msg I2OConnect) {
 	localAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	var conn *net.UDPConn
 	if addr != "" {
-		remote, err := net.ResolveUDPAddr("udp", addr)
+		rawConn, dialErr := o.dialContext(ctx, "udp", addr)
+		err = dialErr
 		if err != nil {
-			o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: err.Error()})
+			o.failConnect(msg, attempt, err.Error())
 			return
 		}
-		conn, err = net.DialUDP("udp", localAddr, remote)
-		if err != nil {
-			o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: err.Error()})
+		var ok bool
+		conn, ok = rawConn.(*net.UDPConn)
+		if !ok {
+			_ = rawConn.Close()
+			o.failConnect(msg, attempt, "udp dial did not return a UDP connection")
 			return
 		}
 	} else {
 		conn, err = net.ListenUDP("udp", localAddr)
 		if err != nil {
-			o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: err.Error()})
+			o.failConnect(msg, attempt, err.Error())
 			return
 		}
 	}
 	writer := NewUDPWriter(conn, nil)
-	o.putSession(msg.ID, &outletSession{id: msg.ID, writer: writer, common: common, close: func() { _ = conn.Close() }, inputQ: newProxyMessageQueue()})
+	session := &outletSession{id: msg.ID, writer: writer, common: common, close: func() { _ = conn.Close() }, inputQ: newProxyMessageQueue()}
+	if !o.installConnectedSession(msg.ID, attempt, session) {
+		common.Close()
+		_ = conn.Close()
+		return
+	}
 	o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: true})
 	safeGo(o.logger, goroutineName("outlet-read-udp-", msg.ID), func() {
 		o.readUDP(msg.TunnelID, msg.ID, conn, common, mode.UsesRemoteUDPAddr())
 	})
+}
+
+func (o *Outlet) failConnect(msg I2OConnect, attempt *outletConnectAttempt, message string) {
+	o.mu.RLock()
+	active := o.connecting[msg.ID] == attempt
+	stopped := o.stopped
+	o.mu.RUnlock()
+	if active && !stopped {
+		o.output(O2IConnect{TunnelID: msg.TunnelID, ID: msg.ID, Success: false, ErrorInfo: message})
+	}
+}
+
+func (o *Outlet) finishConnectAttempt(id uint32, attempt *outletConnectAttempt) {
+	o.mu.Lock()
+	if o.connecting[id] == attempt {
+		delete(o.connecting, id)
+	}
+	o.mu.Unlock()
+	attempt.cancel()
+}
+
+func (o *Outlet) installConnectedSession(id uint32, attempt *outletConnectAttempt, session *outletSession) bool {
+	o.mu.Lock()
+	if o.stopped || o.connecting[id] != attempt || o.sessions[id] != nil {
+		o.mu.Unlock()
+		return false
+	}
+	delete(o.connecting, id)
+	o.sessions[id] = session
+	o.mu.Unlock()
+	attempt.cancel()
+	o.startSessionInput(id, session)
+	return true
+}
+
+// onDisconnectInput 在同一把锁下判断“拨号中”与“已连接”，避免断开消息
+// 落在连接安装的切换窗口内而遗留无人管理的目标连接。
+func (o *Outlet) onDisconnectInput(msg I2ODisconnect) {
+	o.mu.Lock()
+	session := o.sessions[msg.ID]
+	attempt := o.connecting[msg.ID]
+	if attempt != nil {
+		delete(o.connecting, msg.ID)
+	}
+	o.mu.Unlock()
+
+	if attempt != nil {
+		attempt.cancel()
+	}
+	if session == nil {
+		return
+	}
+	if !session.inputQ.Push(msg) {
+		o.logger.Printf("出口会话消息被丢弃: session=%d", msg.ID)
+		o.terminateSession(msg.TunnelID, msg.ID)
+	}
 }
 
 func (o *Outlet) onSendData(msg I2OSendData) error {
@@ -274,10 +395,19 @@ func (o *Outlet) session(id uint32) (*outletSession, bool) {
 	return session, ok
 }
 
-func (o *Outlet) putSession(id uint32, session *outletSession) {
+func (o *Outlet) putSession(id uint32, session *outletSession) bool {
 	o.mu.Lock()
-	defer o.mu.Unlock()
+	if o.stopped || o.sessions[id] != nil {
+		o.mu.Unlock()
+		return false
+	}
 	o.sessions[id] = session
+	o.mu.Unlock()
+	o.startSessionInput(id, session)
+	return true
+}
+
+func (o *Outlet) startSessionInput(id uint32, session *outletSession) {
 	safeGo(o.logger, goroutineName("outlet-session-", id), func() {
 		for {
 			message, ok := session.inputQ.Pop()

@@ -20,7 +20,7 @@ function getVendorChunkName(id: string) {
 
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/',
   build: {
     outDir: 'dist',
     emptyOutDir: true,

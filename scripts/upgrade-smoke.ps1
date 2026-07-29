@@ -49,6 +49,10 @@ try {
 }
 
 $oldHash = (Get-FileHash -LiteralPath $clientExe -Algorithm SHA256).Hash
+# Release archives or deployment tooling can leave the installed executable
+# read-only. Exercise the Windows activation path that must clear this
+# attribute before MoveFileEx can atomically replace the old client.
+(Get-Item -LiteralPath $clientExe).IsReadOnly = $true
 $config = [ordered]@{
   database_url = "sqlite://$dbPath`?mode=rwc"
   listen_addr = "tcp://127.0.0.1:$clientPort"

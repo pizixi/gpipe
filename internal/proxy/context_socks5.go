@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"fmt"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -13,6 +15,8 @@ const (
 	socks5AuthUnavailable = 0xff
 	socks5CmdTCPConnect   = 0x01
 	socks5CmdUDPAssociate = 0x03
+
+	socks5MaxBufferedPayloadBytes = 512 * 1024
 )
 
 type socks5Status int
@@ -24,6 +28,7 @@ const (
 	socks5StatusConnecting
 	socks5StatusRunTCP
 	socks5StatusRunUDP
+	socks5StatusClosing
 )
 
 // Socks5Context 对齐 Rust 中的 Socks5Context 状态机。
@@ -36,7 +41,10 @@ type Socks5Context struct {
 	targetAddr    *TargetAddr
 	connectIsTCP  bool
 	udpSocket     *net.UDPConn
+	udpMu         sync.RWMutex
 	udpTargetAddr *net.UDPAddr
+	udpClientIP   net.IP
+	udpDone       chan struct{}
 }
 
 func NewSocks5Context() *Socks5Context {
@@ -54,23 +62,23 @@ func (c *Socks5Context) OnStart(data *ContextData, peerAddr net.Addr, writer Pee
 
 func (c *Socks5Context) OnPeerData(data *ContextData, payload []byte) error {
 	switch socks5Status(c.status.Load()) {
-	case socks5StatusInit:
-		c.buffer = append(c.buffer, payload...)
-		return c.onInit()
-	case socks5StatusVerify:
-		c.buffer = append(c.buffer, payload...)
-		return c.onVerify()
-	case socks5StatusConnect:
-		c.buffer = append(c.buffer, payload...)
-		return c.onConnect()
-	case socks5StatusRunTCP:
-		encoded, err := data.common.EncodeDataAndLimit(payload)
-		if err != nil {
-			return err
+	case socks5StatusInit, socks5StatusVerify, socks5StatusConnect:
+		if len(c.buffer)+len(payload) > socks5MaxBufferedPayloadBytes {
+			return fmt.Errorf("socks5 handshake buffer too large")
 		}
-		data.output(I2OSendData{TunnelID: data.tunnelID, ID: data.SessionID(), Data: encoded})
+		c.buffer = append(c.buffer, payload...)
+		return c.processBufferedHandshake()
+	case socks5StatusConnecting:
+		if len(c.buffer)+len(payload) > socks5MaxBufferedPayloadBytes {
+			return fmt.Errorf("socks5 pending payload too large")
+		}
+		c.buffer = append(c.buffer, payload...)
+	case socks5StatusRunTCP:
+		return c.sendTCPPayload(payload)
 	case socks5StatusRunUDP:
 		return c.onUDPAssociatePayload(payload)
+	case socks5StatusClosing:
+		return nil
 	}
 	return nil
 }
@@ -92,7 +100,8 @@ func (c *Socks5Context) OnProxyMessage(message ProxyMessage) error {
 		if c.udpSocket == nil {
 			return nil
 		}
-		if c.udpTargetAddr == nil {
+		udpTargetAddr := c.currentUDPTargetAddr()
+		if udpTargetAddr == nil {
 			// 中文注释：客户端尚未发来第一包 UDP 数据时，还没有可回写的地址。
 			return nil
 		}
@@ -111,7 +120,7 @@ func (c *Socks5Context) OnProxyMessage(message ProxyMessage) error {
 		}
 		packet := append([]byte{0, 0, 0}, addrBytes...)
 		packet = append(packet, decoded...)
-		if _, err := c.udpSocket.WriteToUDP(packet, c.udpTargetAddr); err != nil {
+		if _, err := c.udpSocket.WriteToUDP(packet, udpTargetAddr); err != nil {
 			return err
 		}
 		c.data.output(I2ORecvDataResult{TunnelID: c.data.tunnelID, ID: msg.ID, DataLen: uint32(len(msg.Data))})
@@ -127,8 +136,35 @@ func (c *Socks5Context) OnStop(data *ContextData) error {
 	if c.udpSocket != nil {
 		_ = c.udpSocket.Close()
 	}
+	if c.udpDone != nil {
+		<-c.udpDone
+	}
 	data.output(I2ODisconnect{TunnelID: data.tunnelID, ID: data.SessionID()})
 	return nil
+}
+
+func (c *Socks5Context) processBufferedHandshake() error {
+	for {
+		state := socks5Status(c.status.Load())
+		beforeLen := len(c.buffer)
+		var err error
+		switch state {
+		case socks5StatusInit:
+			err = c.onInit()
+		case socks5StatusVerify:
+			err = c.onVerify()
+		case socks5StatusConnect:
+			err = c.onConnect()
+		default:
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if socks5Status(c.status.Load()) == state && len(c.buffer) == beforeLen {
+			return nil
+		}
+	}
 }
 
 func (c *Socks5Context) ReadyForRead() bool {
@@ -141,6 +177,7 @@ func (c *Socks5Context) onInit() error {
 	}
 	if c.buffer[0] != socks5Version {
 		_ = c.writer.Write([]byte{socks5Version, socks5AuthUnavailable}, nil)
+		c.status.Store(int32(socks5StatusClosing))
 		CloseLater(c.writer, 10*time.Millisecond)
 		return nil
 	}
@@ -164,6 +201,7 @@ func (c *Socks5Context) onInit() error {
 	_ = c.writer.Write([]byte{socks5Version, method}, nil)
 	c.buffer = c.buffer[2+methodCount:]
 	if method == socks5AuthUnavailable {
+		c.status.Store(int32(socks5StatusClosing))
 		CloseLater(c.writer, 10*time.Millisecond)
 		return nil
 	}
@@ -181,6 +219,7 @@ func (c *Socks5Context) onVerify() error {
 	}
 	if c.buffer[0] != 0x01 {
 		_ = c.writer.Write([]byte{0x01, 0x01}, nil)
+		c.status.Store(int32(socks5StatusClosing))
 		CloseLater(c.writer, time.Second)
 		return nil
 	}
@@ -202,6 +241,7 @@ func (c *Socks5Context) onVerify() error {
 		return nil
 	}
 	_ = c.writer.Write([]byte{0x01, 0x01}, nil)
+	c.status.Store(int32(socks5StatusClosing))
 	CloseLater(c.writer, time.Second)
 	return nil
 }
@@ -271,9 +311,27 @@ func (c *Socks5Context) onConnectReply(msg O2IConnect) error {
 	}
 	if c.connectIsTCP {
 		c.status.Store(int32(socks5StatusRunTCP))
-		return c.writer.Write([]byte{socks5Version, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}, nil)
+		if err := c.writer.Write([]byte{socks5Version, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}, nil); err != nil {
+			return err
+		}
+		pending := c.buffer
+		c.buffer = nil
+		return c.sendTCPPayload(pending)
 	}
+	c.buffer = nil
 	return c.bindUDPAssociate()
+}
+
+func (c *Socks5Context) sendTCPPayload(payload []byte) error {
+	if len(payload) == 0 || c.data == nil {
+		return nil
+	}
+	encoded, err := c.data.common.EncodeDataAndLimit(payload)
+	if err != nil {
+		return err
+	}
+	c.data.output(I2OSendData{TunnelID: c.data.tunnelID, ID: c.data.SessionID(), Data: encoded})
+	return nil
 }
 
 func (c *Socks5Context) onUDPAssociatePayload(payload []byte) error {
@@ -305,6 +363,7 @@ func (c *Socks5Context) onUDPAssociatePayload(payload []byte) error {
 func (c *Socks5Context) replyCommandError(code byte) error {
 	reply := []byte{socks5Version, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0}
 	_ = c.writer.Write(reply, nil)
+	c.status.Store(int32(socks5StatusClosing))
 	CloseLater(c.writer, time.Second)
 	return nil
 }
@@ -317,8 +376,9 @@ func (c *Socks5Context) bindUDPAssociate() error {
 	c.udpSocket = socket
 	c.status.Store(int32(socks5StatusRunUDP))
 
-	peerUDP, _ := c.peerAddr.(*net.UDPAddr)
-	c.udpTargetAddr = peerUDP
+	if peerTCP, ok := c.peerAddr.(*net.TCPAddr); ok {
+		c.udpClientIP = append(net.IP(nil), peerTCP.IP...)
+	}
 
 	localAddr := socket.LocalAddr().(*net.UDPAddr)
 	reply := []byte{socks5Version, 0x00, 0x00, 0x01, 0, 0, 0, 0, byte(localAddr.Port >> 8), byte(localAddr.Port)}
@@ -326,7 +386,11 @@ func (c *Socks5Context) bindUDPAssociate() error {
 		return err
 	}
 
-	go c.readUDPAssociate()
+	c.udpDone = make(chan struct{})
+	go func() {
+		defer close(c.udpDone)
+		c.readUDPAssociate()
+	}()
 	return nil
 }
 
@@ -337,7 +401,34 @@ func (c *Socks5Context) readUDPAssociate() {
 		if err != nil {
 			return
 		}
-		c.udpTargetAddr = addr
+		if !c.acceptUDPClientAddr(addr) {
+			continue
+		}
 		_ = c.onUDPAssociatePayload(append([]byte(nil), buf[:n]...))
 	}
+}
+
+func (c *Socks5Context) acceptUDPClientAddr(addr *net.UDPAddr) bool {
+	if addr == nil {
+		return false
+	}
+	c.udpMu.Lock()
+	defer c.udpMu.Unlock()
+	if len(c.udpClientIP) > 0 && !c.udpClientIP.IsUnspecified() && !addr.IP.Equal(c.udpClientIP) {
+		return false
+	}
+	if c.udpTargetAddr == nil {
+		c.udpTargetAddr = &net.UDPAddr{IP: append(net.IP(nil), addr.IP...), Port: addr.Port, Zone: addr.Zone}
+		return true
+	}
+	return addr.Port == c.udpTargetAddr.Port && addr.Zone == c.udpTargetAddr.Zone && addr.IP.Equal(c.udpTargetAddr.IP)
+}
+
+func (c *Socks5Context) currentUDPTargetAddr() *net.UDPAddr {
+	c.udpMu.RLock()
+	defer c.udpMu.RUnlock()
+	if c.udpTargetAddr == nil {
+		return nil
+	}
+	return &net.UDPAddr{IP: append(net.IP(nil), c.udpTargetAddr.IP...), Port: c.udpTargetAddr.Port, Zone: c.udpTargetAddr.Zone}
 }
