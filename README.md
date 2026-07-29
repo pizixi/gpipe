@@ -1,6 +1,6 @@
 # gpipe
 
-`gpipe` 是 Rust `npipe` 的 Go 重构版本，尽量保持原有业务与协议兼容，并提供可独立构建、部署的服务端、客户端和 Web 管理端。
+`gpipe` 是 Go实现的一款轻量级、高性能、功能强大的内网穿透代理服务器。 Go-based lightweight, high-performance proxy for intranet penetration.
 
 ## 功能
 
@@ -65,16 +65,16 @@ Set-Location .\release
 
 常用参数：
 
-| 参数 | 说明 |
-| --- | --- |
-| `-OutputDir` | 发布目录，默认 `./release` |
-| `-ConfigPath` | 源配置文件，默认 `./gpipe.json` |
-| `-Version` | 客户端语义版本，正式发布时应显式指定 |
-| `-ServerGOOS` / `-ServerGOARCH` | 指定主服务端产物的平台和架构 |
-| `-SkipFrontend` | 跳过前端构建，沿用现有 `frontend/dist` |
-| `-SkipTemplates` | 跳过客户端模板构建 |
-| `-SkipCerts` | 不复制证书目录 |
-| `-Clean` | 构建前清理指定发布目录 |
+| 参数                            | 说明                                   |
+| ------------------------------- | -------------------------------------- |
+| `-OutputDir`                    | 发布目录，默认 `./release`             |
+| `-ConfigPath`                   | 源配置文件，默认 `./gpipe.json`        |
+| `-Version`                      | 客户端语义版本，正式发布时应显式指定   |
+| `-ServerGOOS` / `-ServerGOARCH` | 指定主服务端产物的平台和架构           |
+| `-SkipFrontend`                 | 跳过前端构建，沿用现有 `frontend/dist` |
+| `-SkipTemplates`                | 跳过客户端模板构建                     |
+| `-SkipCerts`                    | 不复制证书目录                         |
+| `-Clean`                        | 构建前清理指定发布目录                 |
 
 修改过页面、图标、CSS 或 JavaScript 时不要使用 `-SkipFrontend`，否则这些改动不会进入新服务端。
 
@@ -158,21 +158,21 @@ go build -ldflags "-s -w" -buildvcs=false -o .\bin\gpipe-client-linux-amd64 .\cm
 }
 ```
 
-| 配置项 | 说明 |
-| --- | --- |
-| `database_url` | SQLite 地址，例如 `sqlite://gpipe.db?mode=rwc` |
-| `listen_addr` | 客户端服务监听地址，多个地址用英文逗号分隔 |
-| `illegal_traffic_forward` | 非 npipe 协议流量转发目标，例如 `127.0.0.1:80` |
-| `enable_tls` | 是否加密客户端与服务端之间的传输链路 |
-| `tls_cert` / `tls_key` | 服务端 TLS 证书和私钥 |
-| `web_base_dir` | 可选的磁盘 Web 资源目录；为空或不存在时使用内置页面 |
-| `web_addr` | Web 管理端监听地址 |
-| `web_username` / `web_password` | Web 管理凭据；任一留空都会关闭 Web 管理端 |
-| `client_template_dir` | 预构建客户端模板目录 |
-| `client_artifact_cache_dir` | 已注入玩家配置的客户端下载缓存目录 |
-| `client_latest_version` | 最新客户端语义版本，应与模板 manifest 一致 |
-| `quiet` | 是否静默运行 |
-| `log_dir` | 日志目录 |
+| 配置项                          | 说明                                                |
+| ------------------------------- | --------------------------------------------------- |
+| `database_url`                  | SQLite 地址，例如 `sqlite://gpipe.db?mode=rwc`      |
+| `listen_addr`                   | 客户端服务监听地址，多个地址用英文逗号分隔          |
+| `illegal_traffic_forward`       | 非 npipe 协议流量转发目标，例如 `127.0.0.1:80`      |
+| `enable_tls`                    | 是否加密客户端与服务端之间的传输链路                |
+| `tls_cert` / `tls_key`          | 服务端 TLS 证书和私钥                               |
+| `web_base_dir`                  | 可选的磁盘 Web 资源目录；为空或不存在时使用内置页面 |
+| `web_addr`                      | Web 管理端监听地址                                  |
+| `web_username` / `web_password` | Web 管理凭据；任一留空都会关闭 Web 管理端           |
+| `client_template_dir`           | 预构建客户端模板目录                                |
+| `client_artifact_cache_dir`     | 已注入玩家配置的客户端下载缓存目录                  |
+| `client_latest_version`         | 最新客户端语义版本，应与模板 manifest 一致          |
+| `quiet`                         | 是否静默运行                                        |
+| `log_dir`                       | 日志目录                                            |
 
 `web_base_dir` 中既可以放完整 `index.html`，也可以放 `templates/` 目录使用模板渲染，适合前端联调。
 
@@ -241,16 +241,16 @@ Web 管理端按以下顺序生成玩家客户端：
 
 常用参数：
 
-| 参数 | 说明 |
-| --- | --- |
-| `--server` | 服务端地址；多个地址用英文逗号分隔 |
-| `--key` | 玩家密钥 |
-| `--enable-tls` | 启用客户端与服务端之间的 TLS |
-| `--tls-server-name` | TLS SNI |
+| 参数                                            | 说明                                 |
+| ----------------------------------------------- | ------------------------------------ |
+| `--server`                                      | 服务端地址；多个地址用英文逗号分隔   |
+| `--key`                                         | 玩家密钥                             |
+| `--enable-tls`                                  | 启用客户端与服务端之间的 TLS         |
+| `--tls-server-name`                             | TLS SNI                              |
 | `--ss-server` / `--ss-method` / `--ss-password` | Shadowsocks 出站配置，三项需同时提供 |
-| `--quiet` | 静默模式 |
-| `--log-dir` | 日志目录 |
-| `--backtrace` | 输出更完整的运行时回溯 |
+| `--quiet`                                       | 静默模式                             |
+| `--log-dir`                                     | 日志目录                             |
+| `--backtrace`                                   | 输出更完整的运行时回溯               |
 
 兼容说明：
 
@@ -372,16 +372,16 @@ npm audit
 
 ## 项目结构
 
-| 路径 | 用途 |
-| --- | --- |
-| `cmd/server` / `cmd/client` | 服务端和客户端入口 |
-| `client` | 对第三方 Go 程序公开的客户端包 |
-| `internal/server` / `internal/client` | 服务端与客户端核心逻辑 |
-| `internal/proxy` | 代理入口、出口、加密、压缩和数据转发 |
-| `internal/codec` / `internal/proto` | 帧与协议消息编解码 |
-| `internal/db` / `internal/web` | SQLite 存储与 Web 管理 API |
-| `frontend` | React 管理端；产物写入 `frontend/dist` |
-| `scripts/build-release.ps1` | 一键发布构建 |
-| `scripts/build-client-templates.ps1` | 多平台客户端模板构建 |
-| `scripts/smoke.ps1` / `scripts/upgrade-smoke.ps1` | 基础链路与升级验证 |
-| `examples` | Go 包调用示例 |
+| 路径                                              | 用途                                   |
+| ------------------------------------------------- | -------------------------------------- |
+| `cmd/server` / `cmd/client`                       | 服务端和客户端入口                     |
+| `client`                                          | 对第三方 Go 程序公开的客户端包         |
+| `internal/server` / `internal/client`             | 服务端与客户端核心逻辑                 |
+| `internal/proxy`                                  | 代理入口、出口、加密、压缩和数据转发   |
+| `internal/codec` / `internal/proto`               | 帧与协议消息编解码                     |
+| `internal/db` / `internal/web`                    | SQLite 存储与 Web 管理 API             |
+| `frontend`                                        | React 管理端；产物写入 `frontend/dist` |
+| `scripts/build-release.ps1`                       | 一键发布构建                           |
+| `scripts/build-client-templates.ps1`              | 多平台客户端模板构建                   |
+| `scripts/smoke.ps1` / `scripts/upgrade-smoke.ps1` | 基础链路与升级验证                     |
+| `examples`                                        | Go 包调用示例                          |
