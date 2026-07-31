@@ -8,6 +8,8 @@ import (
 	internalclient "github.com/pizixi/gpipe/internal/client"
 )
 
+const packageClientVersion = "0-package"
+
 // DialFunc 通用流式拨号函数类型。
 type DialFunc = internalclient.DialFunc
 
@@ -94,5 +96,6 @@ func toInternalOptions(opts Options) internalclient.Options {
 		CACert:        opts.CACert,
 		Logger:        logger,
 		Dial:          opts.Dial,
+		Version:       packageClientVersion,
 	}
 }

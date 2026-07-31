@@ -26,3 +26,13 @@ func TestValidateStreamDialServerList(t *testing.T) {
 		t.Fatalf("ValidateStreamDialServerList() error = nil, want non-nil")
 	}
 }
+
+func TestPackageClientReportsDedicatedVersionWithoutUpdater(t *testing.T) {
+	opts := toInternalOptions(Options{})
+	if opts.Version != packageClientVersion {
+		t.Fatalf("version = %q, want %q", opts.Version, packageClientVersion)
+	}
+	if opts.Upgrader != nil {
+		t.Fatal("package client must not enable remote upgrades")
+	}
+}
